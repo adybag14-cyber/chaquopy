@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "targets": {
+    "python": ["3.13", "3.14"],
+    "android_api": 24,
+    "abis": ["arm64-v8a", "x86_64"]
+  },
+  "packages": {
+    "jiter": {
+      "version": "0.16.0",
+      "metadata_url": "https://pypi.org/pypi/jiter/0.16.0/json",
+      "url": "https://files.pythonhosted.org/packages/1d/1f/10936e16d8860c70698a1aa939a46aa0224813b782bce4e000e637da0b2d/jiter-0.16.0.tar.gz",
+      "filename": "jiter-0.16.0.tar.gz",
+      "source_directory": "jiter-0.16.0",
+      "sha256": "7b24c3492c5f4f84a37946ad9cf504910cf6a782d6a4e0689b6673c5894b4a1c",
+      "bytes": 176431,
+      "build": {
+        "backend": "maturin",
+        "original_requirement": "maturin>=1.9.4,<2",
+        "pinned_requirement": "maturin==1.15.0",
+        "environment": {}
+      }
+    },
+    "pydantic_core": {
+      "version": "2.46.5",
+      "metadata_url": "https://pypi.org/pypi/pydantic_core/2.46.5/json",
+      "url": "https://files.pythonhosted.org/packages/af/f9/8a06bea35ef8daf588f707784c973a7046e0034c8d8cfb08828eeffb8b75/pydantic_core-2.46.5.tar.gz",
+      "filename": "pydantic_core-2.46.5.tar.gz",
+      "source_directory": "pydantic_core-2.46.5",
+      "sha256": "10416c15b8839ecc4ef4d0885da76da6fd0f67333a0eb8aff6d93c4b8f2910fc",
+      "bytes": 472262,
+      "paired_requirement": "pydantic==2.13.5",
+      "build": {
+        "backend": "maturin",
+        "original_requirement": "maturin>=1.10,<2",
+        "pinned_requirement": "maturin==1.15.0",
+        "environment": {}
+      }
+    },
+    "msgpack": {
+      "version": "1.2.2",
+      "metadata_url": "https://pypi.org/pypi/msgpack/1.2.2/json",
+      "url": "https://files.pythonhosted.org/packages/6d/44/ea2100ec54d30c46ee9dba10a3bfb79b655e96c6df237238a3234c75869b/msgpack-1.2.2.tar.gz",
+      "filename": "msgpack-1.2.2.tar.gz",
+      "source_directory": "msgpack-1.2.2",
+      "sha256": "9eb0b0e602064527a045ea28c4f174ed69383587e29cebe28947e3b84106eb2a",
+      "bytes": 187025,
+      "build": {
+        "backend": "setuptools.build_meta",
+        "environment": {"MSGPACK_PUREPYTHON": "1"},
+        "environment_reference": "https://github.com/msgpack/msgpack-python/blob/v1.2.2/setup.py",
+        "mode": "pure-python"
+      }
+    }
+  }
+}

@@ -3,3 +3,7 @@ __pycache__/
 *.jks
 *.pyc
 hs_err*.log
+.artifacts/
+compat/hermes/android/.gradle/
+compat/hermes/android/**/build/
+compat/hermes/android/local.properties

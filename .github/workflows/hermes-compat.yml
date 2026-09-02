@@ -1,0 +1,210 @@
+name: Hermes stable Android Python compatibility
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/hermes-python314-compat]
+    paths:
+      - compat/hermes/**
+      - .github/workflows/hermes-compat.yml
+  pull_request:
+    paths:
+      - compat/hermes/**
+      - .github/workflows/hermes-compat.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hermes-compat-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  helper-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.14.7'
+      - name: Test source provenance, wheel auditing, and runtime-test contracts
+        run: |
+          python -m pip install packaging==26.3
+          python -m unittest discover -s compat/hermes/tests -v
+          python -m unittest discover -s compat/hermes/android/tests -v
+
+  native-wheels:
+    needs: helper-tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        package: [jiter, pydantic-core]
+        python: ['3.13', '3.14']
+        abi: [arm64-v8a, x86_64]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.14.7'
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        with:
+          packages: platform-tools
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable action revision
+        with:
+          toolchain: '1.88.0'
+          targets: aarch64-linux-android,x86_64-linux-android
+      - name: Install pinned build drivers
+        run: python -m pip install -r compat/hermes/requirements-build.txt
+      - name: Build and qualify one native Android wheel
+        env:
+          PACKAGE: ${{ matrix.package }}
+          PYTHON_MINOR: ${{ matrix.python }}
+          ANDROID_ABI: ${{ matrix.abi }}
+        run: |
+          python compat/hermes/build_native.py \
+            --package "$PACKAGE" --python "$PYTHON_MINOR" --abi "$ANDROID_ABI" \
+            --source-cache "$RUNNER_TEMP/hermes-source" \
+            --output ".artifacts/native"
+      - name: Preserve wheels and exact build evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: hermes-native-${{ matrix.package }}-${{ matrix.python }}-${{ matrix.abi }}
+          path: .artifacts/native/
+          if-no-files-found: warn
+          retention-days: 30
+
+  android-app:
+    needs: [native-wheels, msgpack-pure-python]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        python: ['3.13', '3.14']
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: ${{ matrix.python }}
+          allow-prereleases: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        with:
+          packages: platform-tools platforms;android-35 build-tools;35.0.0
+      - uses: gradle/actions/setup-gradle@67621b124fd2e251c5e8a0e6e3b91318f2287669 # v6.3.0
+        with:
+          gradle-version: '8.11.1'
+          cache-disabled: true
+      - name: Download native wheel receipts for this Python
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: hermes-native-*-${{ matrix.python }}-*
+          path: .artifacts/downloads
+          digest-mismatch: error
+      - name: Download the genuine msgpack fallback wheel
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: hermes-msgpack-pure-python
+          path: .artifacts/downloads/hermes-msgpack-pure-python
+          digest-mismatch: error
+      - name: Assemble and audit the complete offline wheelhouse
+        env:
+          PYTHON_MINOR: ${{ matrix.python }}
+        run: |
+          python -m pip install packaging==26.3
+          python compat/hermes/assemble_wheelhouse.py --downloads .artifacts/downloads \
+            --python "$PYTHON_MINOR" --output .artifacts/wheelhouse
+          python compat/hermes/prepare_app.py --wheelhouse .artifacts/wheelhouse \
+            --python-version "$PYTHON_MINOR"
+      - name: Compile the separate compatibility APK and instrumentation
+        env:
+          PYTHON_MINOR: ${{ matrix.python }}
+        run: |
+          gradle -p compat/hermes/android --no-daemon --console=plain \
+            -PpythonVersion="$PYTHON_MINOR" -Pwheelhouse="$GITHUB_WORKSPACE/.artifacts/wheelhouse" \
+            -PbuildPython="$(command -v python)" assembleDebug assembleDebugAndroidTest lintDebug
+      - name: Run the genuine full stack inside the Android app
+        uses: ReactiveCircus/android-emulator-runner@c9c93e6ba9c4194322e114c40970d5983d9a07cc # v2.38.0
+        env:
+          PYTHON_MINOR: ${{ matrix.python }}
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          script: |
+            mkdir -p .artifacts/app
+            gradle -p compat/hermes/android --no-daemon --console=plain -PpythonVersion="$PYTHON_MINOR" -Pwheelhouse="$GITHUB_WORKSPACE/.artifacts/wheelhouse" -PbuildPython="$(command -v python)" connectedDebugAndroidTest
+            serial="$(adb devices | awk 'NR > 1 && $2 == "device" { print $1 }')"
+            test -n "$serial"
+            test "$(printf '%s\n' "$serial" | wc -l)" -eq 1
+            adb -s "$serial" shell run-as com.mobilefork.chaquopycompat cat files/runtime-smoke.json > .artifacts/app/runtime-smoke.json
+            python compat/hermes/verify_app_report.py .artifacts/app/runtime-smoke.json --python "$PYTHON_MINOR" --abi x86_64
+      - name: Preserve APKs and on-Android compatibility evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: hermes-chaquopy-app-${{ matrix.python }}-x86_64
+          path: |
+            .artifacts/app/
+            .artifacts/wheelhouse/wheelhouse-manifest.json
+            compat/hermes/android/.generated/preparation.json
+            compat/hermes/android/app/build/outputs/apk/
+            compat/hermes/android/app/build/reports/
+          if-no-files-found: warn
+          retention-days: 30
+
+  msgpack-pure-python:
+    needs: helper-tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.14.7'
+      - name: Install pinned build drivers
+        run: python -m pip install -r compat/hermes/requirements-build.txt
+      - name: Prepare the verified msgpack source archive
+        run: |
+          mkdir -p .artifacts/msgpack
+          python compat/hermes/prepare_sources.py prepare --package msgpack \
+            --dest "$RUNNER_TEMP/msgpack-source" > .artifacts/msgpack/source-provenance.json
+      - name: Build the official pure-Python variant
+        env:
+          MSGPACK_PUREPYTHON: '1'
+          SOURCE_DATE_EPOCH: '1754006400'
+        run: |
+          source_dir="$(python -c 'import json; print(json.load(open(".artifacts/msgpack/source-provenance.json"))["source_dir"])')"
+          python -m build --wheel --no-isolation --outdir .artifacts/msgpack/wheels "$source_dir"
+          python compat/hermes/audit_wheels.py --wheel-dir .artifacts/msgpack/wheels \
+            --python 3.14 --abi x86_64 --package-filter msgpack \
+            --output .artifacts/msgpack/wheel-audit.json
+      - name: Preserve the genuine pure-Python wheel
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: hermes-msgpack-pure-python
+          path: .artifacts/msgpack/
+          if-no-files-found: error
+          retention-days: 30
