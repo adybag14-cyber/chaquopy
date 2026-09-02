@@ -77,6 +77,8 @@ build target. The native driver captures the actual test report from Android,
 verifies the complete selected suite and genuine package inventory, and binds
 the report's digest, measured API, Python version, and page size to its build
 receipt. A successful compiler exit alone cannot certify runtime compatibility.
+The device API comes from `platform.android_ver()`; Python's build-time minimum
+from `sys.getandroidapilevel()` is retained separately, never substituted for it.
 
 Therefore an arm64-v8a
 wheel cross-built on an x86_64 runner is explicitly labelled

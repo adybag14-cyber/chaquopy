@@ -39,6 +39,8 @@ class RuntimeSmokeContractTests(unittest.TestCase):
     def test_android_identity_needs_platform_and_api(self):
         with mock.patch.object(sys, "platform", "android"), \
                 mock.patch.object(sys, "getandroidapilevel", return_value=24, create=True), \
+                mock.patch.object(smoke.platform, "android_ver", create=True,
+                                  return_value=types.SimpleNamespace(api_level=35)), \
                 mock.patch.object(smoke.platform, "system", return_value="Android"), \
                 mock.patch.object(smoke.platform, "machine", return_value="aarch64"), \
                 mock.patch.object(smoke.sysconfig, "get_config_var", return_value="fixture-soabi"):
@@ -47,6 +49,59 @@ class RuntimeSmokeContractTests(unittest.TestCase):
                 mock.patch.object(sys, "getandroidapilevel", return_value=24, create=True), \
                 mock.patch.object(smoke.sysconfig, "get_config_var", return_value="fixture-soabi"):
             self.assertFalse(smoke.platform_evidence()["is_android"])
+
+    @contextlib.contextmanager
+    def android_platform(self, build_api, runtime_api, python="3.14.0"):
+        with (
+            mock.patch.object(sys, "platform", "android"),
+            mock.patch.object(sys, "getandroidapilevel", return_value=build_api, create=True),
+            mock.patch.object(smoke.platform, "android_ver", create=True,
+                              return_value=types.SimpleNamespace(api_level=runtime_api)) as query,
+            mock.patch.object(smoke.platform, "system", return_value="Android"),
+            mock.patch.object(smoke.platform, "machine", return_value="x86_64"),
+            mock.patch.object(smoke.platform, "python_version", return_value=python),
+            mock.patch.object(smoke.sysconfig, "get_config_var", return_value="fixture-soabi"),
+        ):
+            yield query
+
+    def test_runtime_api_is_not_the_interpreter_build_baseline(self):
+        for build_api, runtime_api, python in ((24, 35, "3.14.0"), (21, 27, "3.13.9")):
+            with (self.subTest(build_api=build_api, runtime_api=runtime_api),
+                  self.android_platform(build_api, runtime_api, python)):
+                evidence = smoke.platform_evidence()
+                self.assertEqual(evidence["android_build_api_level"], build_api)
+                self.assertEqual(evidence["android_api_level"], runtime_api)
+                self.assertIsNone(evidence["android_api_query_error"])
+                smoke.validate_platform(evidence, True)
+
+    def test_invalid_runtime_api_cannot_fall_back_to_build_api(self):
+        for observed in (None, 0, -1, True, "35"):
+            with (self.subTest(observed=observed), self.android_platform(24, observed),
+                  mock.patch.object(smoke, "package_evidence") as packages):
+                report = smoke.run("jiter", require_android=True)
+                self.assertEqual(report["status"], "failed")
+                self.assertFalse(report["android_execution_verified"])
+                self.assertEqual(report["platform"]["android_build_api_level"], 24)
+                self.assertIsNone(report["platform"]["android_api_level"])
+                self.assertIn("valid observed Android runtime API", report["preflight_error"])
+                packages.assert_not_called()
+
+    def test_failed_runtime_query_is_recorded_and_rejected(self):
+        with self.android_platform(24, 35) as query:
+            query.side_effect = OSError("property unavailable")
+            report = smoke.run("jiter", require_android=True)
+        self.assertEqual(report["status"], "failed")
+        self.assertIsNone(report["platform"]["android_api_level"])
+        self.assertIn("property unavailable", report["platform"]["android_api_query_error"])
+
+    def test_host_does_not_query_or_claim_android_runtime_api(self):
+        with mock.patch.object(smoke.platform, "android_ver", create=True,
+                               side_effect=AssertionError("host must not query Android")) as query:
+            evidence = smoke.platform_evidence()
+        self.assertFalse(evidence["is_android"])
+        self.assertIsNone(evidence["android_api_level"])
+        self.assertIsNone(evidence["android_build_api_level"])
+        query.assert_not_called()
 
     def test_unsupported_python_and_android_api_fail(self):
         for version in ("3.12.10", "3.15.0"):

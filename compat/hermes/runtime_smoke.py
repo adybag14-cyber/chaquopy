@@ -57,7 +57,20 @@ LOG_MARKER = "HERMES_RUNTIME_SMOKE_JSON="
 
 def platform_evidence():
     api_function = getattr(sys, "getandroidapilevel", None)
-    api_level = api_function() if callable(api_function) else None
+    build_api_level = api_function() if callable(api_function) else None
+    api_level = None
+    api_error = None
+    if sys.platform == "android":
+        try:
+            # sys.getandroidapilevel is the interpreter's build-time minimum,
+            # not the device API. android_ver reads ro.build.version.sdk.
+            observed_api = platform.android_ver().api_level
+            if type(observed_api) is int and observed_api > 0:
+                api_level = observed_api
+            else:
+                api_error = "platform.android_ver returned no valid runtime API level"
+        except Exception as error:
+            api_error = f"{type(error).__name__}: {error}"
     sysconf = getattr(os, "sysconf", None)
     return {
         "platform": sys.platform,
@@ -67,8 +80,10 @@ def platform_evidence():
         "implementation": platform.python_implementation(),
         "soabi": sysconfig.get_config_var("SOABI"),
         "android_api_level": api_level,
+        "android_build_api_level": build_api_level,
+        "android_api_query_error": api_error,
         "page_size": sysconf("SC_PAGE_SIZE") if callable(sysconf) else None,
-        "is_android": sys.platform == "android" and isinstance(api_level, int),
+        "is_android": sys.platform == "android" and api_level is not None,
     }
 
 
@@ -78,6 +93,10 @@ def validate_platform(evidence, require_android):
     if tuple(map(int, evidence["python"].split(".")[:2])) not in ((3, 13), (3, 14)):
         raise RuntimeError("This compatibility lane supports Python 3.13 and 3.14 only")
     if require_android and not evidence["is_android"]:
+        if evidence["platform"] == "android":
+            raise RuntimeError(
+                "--require-android requires a valid observed Android runtime API level"
+            )
         raise RuntimeError("--require-android rejects host-only execution")
     if evidence["is_android"] and evidence["android_api_level"] < 24:
         raise RuntimeError("This compatibility lane requires Android API 24 or newer")

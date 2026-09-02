@@ -60,6 +60,12 @@ adb -s SERIAL shell run-as com.mobilefork.chaquopycompat cat files/runtime-smoke
 
 Require `OK (1 test)` from instrumentation **and** JSON `status: "passed"`,
 `android_execution_verified: true`, a nonzero Python test count, and no skips.
+Then run `compat/hermes/verify_app_report.py` on the saved JSON with the exact
+`--python`, `--abi`, and observed device `--api`. This verifies the complete
+23-test identity set and all pinned genuine packages; a status label or a
+nonzero count alone is not sufficient. The hosted matrix does this on API 24
+and 35 for both Python versions. Device API is measured independently of the
+interpreter's build-time minimum API.
 The instrumentation calls `runtime_smoke.main(["--package", "full",
 "--require-android", "--json-output", ...])` and asserts its zero exit code.
 The Python suite exercises real native imports, Pydantic behavior, pure msgpack,
