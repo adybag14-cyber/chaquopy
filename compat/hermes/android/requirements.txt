@@ -35,4 +35,3 @@ idna==3.19
 annotated-types==0.8.0
 typing-inspection==0.4.4
 h11==0.16.0
-

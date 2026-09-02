@@ -40,10 +40,12 @@ class RuntimeSmokeContractTests(unittest.TestCase):
         with mock.patch.object(sys, "platform", "android"), \
                 mock.patch.object(sys, "getandroidapilevel", return_value=24, create=True), \
                 mock.patch.object(smoke.platform, "system", return_value="Android"), \
-                mock.patch.object(smoke.platform, "machine", return_value="aarch64"):
+                mock.patch.object(smoke.platform, "machine", return_value="aarch64"), \
+                mock.patch.object(smoke.sysconfig, "get_config_var", return_value="fixture-soabi"):
             self.assertTrue(smoke.platform_evidence()["is_android"])
         with mock.patch.object(sys, "platform", "linux"), \
-                mock.patch.object(sys, "getandroidapilevel", return_value=24, create=True):
+                mock.patch.object(sys, "getandroidapilevel", return_value=24, create=True), \
+                mock.patch.object(smoke.sysconfig, "get_config_var", return_value="fixture-soabi"):
             self.assertFalse(smoke.platform_evidence()["is_android"])
 
     def test_unsupported_python_and_android_api_fail(self):

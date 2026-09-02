@@ -21,4 +21,3 @@ public final class MainActivity extends Activity {
         setContentView(message);
     }
 }
-

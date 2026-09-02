@@ -7,4 +7,3 @@ require(gradle.gradleVersion == "8.11.1") {
     "Use Gradle 8.11.1 for the pinned AGP 8.9.3 compatibility app; " +
         "the upstream demo wrapper is a different toolchain."
 }
-
