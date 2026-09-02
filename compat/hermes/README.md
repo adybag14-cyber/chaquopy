@@ -71,14 +71,18 @@ native modules, and pass every selected behavior test. It never turns a host
 test into Android proof. SDK tests use offline HTTP fixtures; aiohttp tests use
 loopback sockets. No real credentials or paid inference calls are needed.
 
-cibuildwheel tests the architecture of the host runner. Its managed `minVersion`
-testbed currently runs **API 27**, which is distinct from the wheel's **API 24**
-build target. The native driver captures the actual test report from Android,
+cibuildwheel tests the architecture of the host runner. The native smoke follows
+its upstream-default managed `maxVersion` testbed. That testbed's Android version
+is controlled by the pinned CPython bundle and is distinct from the wheel's
+**API 24** build target. The native driver captures the actual report from Android,
 verifies the complete selected suite and genuine package inventory, and binds
 the report's digest, measured API, Python version, and page size to its build
 receipt. A successful compiler exit alone cannot certify runtime compatibility.
 The device API comes from `platform.android_ver()`; Python's build-time minimum
 from `sys.getandroidapilevel()` is retained separately, never substituted for it.
+The separate app matrix below supplies the minimum-API gate. The older managed
+`minVersion` testbed selected a 32-bit x86 image for its 64-bit-only APK in our
+hosted run; this lab does not count that zero-test instrumentation failure as a pass.
 
 Therefore an arm64-v8a
 wheel cross-built on an x86_64 runner is explicitly labelled

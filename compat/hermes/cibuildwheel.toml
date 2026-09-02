@@ -4,4 +4,4 @@ build-verbosity = 1
 test-sources = ["compat/hermes/runtime_smoke.py"]
 
 [tool.cibuildwheel.android]
-test-runtime = { args = ["--managed", "minVersion"] }
+test-runtime = { args = ["--managed", "maxVersion"] }

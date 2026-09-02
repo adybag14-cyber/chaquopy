@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import tomllib
 import unittest
 from unittest.mock import patch
 
@@ -16,6 +17,14 @@ from compat.hermes.tests import test_verify_app_report
 
 
 class NativeBuildContractTests(unittest.TestCase):
+    def test_managed_runtime_uses_upstream_default_testbed(self):
+        path = build_native.ROOT / "compat/hermes/cibuildwheel.toml"
+        configuration = tomllib.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            configuration["tool"]["cibuildwheel"]["android"]["test-runtime"]["args"],
+            ["--managed", "maxVersion"],
+        )
+
     def test_one_explicit_python_and_abi_identifier(self):
         command = build_native.command_for(Path("source"), Path("wheels"), "3.14", "arm64-v8a")
         self.assertEqual(command[:3], [sys.executable, "-m", "cibuildwheel"])
