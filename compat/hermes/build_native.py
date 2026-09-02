@@ -9,6 +9,7 @@ wheels built on x86_64 are explicitly build-only, not device-certified.
 from __future__ import annotations
 
 import argparse
+from contextlib import suppress
 from datetime import datetime, timezone
 import hashlib
 import importlib.metadata
@@ -16,9 +17,18 @@ import json
 import os
 from pathlib import Path
 import platform
+import queue
 import shutil
+import signal
 import subprocess
 import sys
+import threading
+import time
+
+try:
+    from .verify_app_report import validate as validate_runtime_report
+except ImportError:
+    from verify_app_report import validate as validate_runtime_report
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -46,7 +56,7 @@ def build_environment(package: str) -> dict[str, str]:
             ),
             "CIBW_TEST_COMMAND_ANDROID": (
                 "python -m compat.hermes.runtime_smoke "
-                f"--package {package} --require-android"
+                f"--package {package} --require-android --log-marker"
             ),
             "CIBW_TEST_REQUIRES_ANDROID": "typing_extensions==4.15.0",
             "CIBW_TEST_SKIP": "",
@@ -75,6 +85,98 @@ def command_for(source: Path, wheel_dir: Path, python: str, abi: str) -> list[st
 
 def write_json(path: Path, payload: dict) -> None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def run_logged(command, environment, timeout, log_path):
+    """Stream logs and capture the actual Android report, with an owned timeout group."""
+    reports = []
+    lines = queue.Queue()
+    process = subprocess.Popen(
+        command, cwd=ROOT, env=environment, stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace",
+        start_new_session=True,
+    )
+
+    def read_lines():
+        try:
+            for line in process.stdout:
+                lines.put(line)
+        finally:
+            lines.put(None)
+
+    reader = threading.Thread(target=read_lines, daemon=True)
+    deadline = time.monotonic() + timeout
+    completed = False
+    try:
+        reader.start()
+        with log_path.open("w", encoding="utf-8") as log:
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise subprocess.TimeoutExpired(command, timeout)
+                try:
+                    line = lines.get(timeout=min(1, remaining))
+                except queue.Empty:
+                    continue
+                if line is None:
+                    break
+                print(line, end="", flush=True)
+                log.write(line)
+                log.flush()
+                marker = "HERMES_RUNTIME_SMOKE_JSON="
+                if marker in line:
+                    reports.append(json.loads(line.split(marker, 1)[1]))
+        code = process.wait(timeout=max(1, deadline - time.monotonic()))
+        if code:
+            raise subprocess.CalledProcessError(code, command)
+        completed = True
+        return reports
+    finally:
+        if not completed:
+            # This is the new session created immediately above, never the
+            # caller's shell/Codex process group or an unrelated emulator.
+            # The leader may already have exited while a child holds stdout.
+            with suppress(ProcessLookupError):
+                os.killpg(process.pid, signal.SIGTERM)
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                pass
+            with suppress(ProcessLookupError):
+                os.killpg(process.pid, signal.SIGKILL)
+            process.wait(timeout=5)
+        if reader.ident is not None:
+            reader.join(timeout=5)
+        # Avoid blocking on TextIOWrapper's lock if a separately sessioned
+        # descendant retained the pipe. The reader owns it until EOF.
+        if not reader.is_alive():
+            process.stdout.close()
+
+
+def record_runtime_evidence(report, runtime_reports, output, *, python, abi,
+                            package, host_machine):
+    if host_machine in {"arm64", "aarch64"}:
+        native_abi = "arm64-v8a"
+    elif host_machine in {"x86_64", "AMD64"}:
+        native_abi = "x86_64"
+    else:
+        raise ValueError(f"Unsupported Android testbed host: {host_machine}")
+    if abi != native_abi:
+        if runtime_reports:
+            raise ValueError("Unexpected runtime report for a cross-architecture build")
+        report["runtime_validation"] = "not_run_cross_architecture"
+        return
+    if len(runtime_reports) != 1:
+        raise ValueError("Expected exactly one measured Android runtime report")
+    runtime_report = runtime_reports[0]
+    validate_runtime_report(runtime_report, python, abi, package_group=package)
+    runtime_path = output / "runtime-report.json"
+    write_json(runtime_path, runtime_report)
+    report["runtime_report_sha256"] = hashlib.sha256(runtime_path.read_bytes()).hexdigest()
+    report["runtime_android_api"] = runtime_report["platform"]["android_api_level"]
+    report["runtime_page_size"] = runtime_report["platform"]["page_size"]
+    report["runtime_python"] = runtime_report["platform"]["python"]
+    report["runtime_validation"] = "cibuildwheel-android-testbed-passed"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -138,9 +240,9 @@ def main(argv: list[str] | None = None) -> int:
         shutil.copyfile(source["provenance_path"], output / "source-provenance.json")
         command = command_for(source_dir, wheel_dir, args.python, args.abi)
         report["command"] = command
-        subprocess.run(
-            command, cwd=ROOT, env=build_environment(args.package),
-            check=True, timeout=args.timeout,
+        runtime_reports = run_logged(
+            command, build_environment(args.package), args.timeout,
+            output / "cibuildwheel.log",
         )
         subprocess.run(
             [
@@ -151,14 +253,14 @@ def main(argv: list[str] | None = None) -> int:
             ],
             cwd=ROOT, check=True, timeout=120,
         )
-        report["build_status"] = "passed"
-        native_machine = "arm64-v8a" if platform.machine() in {"arm64", "aarch64"} else "x86_64"
-        report["runtime_validation"] = (
-            "cibuildwheel-android-testbed-passed"
-            if args.abi == native_machine else "not_run_cross_architecture"
+        record_runtime_evidence(
+            report, runtime_reports, output, python=args.python, abi=args.abi,
+            package=args.package, host_machine=platform.machine(),
         )
+        report["build_status"] = "passed"
         return 0
-    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+    except (OSError, ValueError, importlib.metadata.PackageNotFoundError,
+            subprocess.SubprocessError) as exc:
         report["error"] = str(exc)
         print(f"Android wheel build rejected: {exc}", file=sys.stderr)
         return 1

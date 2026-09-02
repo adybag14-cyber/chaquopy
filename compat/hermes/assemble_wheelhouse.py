@@ -27,8 +27,10 @@ from packaging.specifiers import SpecifierSet
 
 try:
     from . import audit_wheels as auditor
+    from .verify_app_report import validate as validate_runtime_report
 except ImportError:  # Direct script execution.
     import audit_wheels as auditor
+    from verify_app_report import validate as validate_runtime_report
 
 
 HERE = Path(__file__).resolve().parent
@@ -210,6 +212,87 @@ def check_provenance(receipt: dict, package: str, entry: dict, lock: dict, lock_
         )
 
 
+def check_native_runtime(directory: Path, build: dict, package: str, python: str, abi: str) -> dict:
+    """Bind measured x86 runtime facts without upgrading cross-ABI evidence."""
+    runtime_path = directory / "runtime-report.json"
+    runtime_keys = {key for key in build if key.startswith("runtime_")}
+    if abi == "arm64-v8a":
+        require(
+            build.get("runtime_validation") == "not_run_cross_architecture",
+            "ARM cross-architecture artifact must not claim runtime validation",
+        )
+        require(
+            runtime_keys == {"runtime_validation"}
+            and not runtime_path.exists()
+            and not runtime_path.is_symlink(),
+            "ARM cross-architecture artifact contains unexpected runtime evidence",
+        )
+        return {"runtime_evidence_verified": False}
+
+    require(abi == "x86_64", "unsupported native runtime evidence ABI")
+    require(
+        build.get("runtime_validation") == "cibuildwheel-android-testbed-passed",
+        "x86_64 artifact requires passing Android runtime validation",
+    )
+    require(
+        runtime_keys
+        == {
+            "runtime_validation",
+            "runtime_report_sha256",
+            "runtime_android_api",
+            "runtime_page_size",
+            "runtime_python",
+        },
+        "x86_64 artifact requires the complete runtime report binding",
+    )
+    expected_hash = build["runtime_report_sha256"]
+    require(
+        isinstance(expected_hash, str) and SHA256.fullmatch(expected_hash),
+        "invalid runtime report SHA-256 binding",
+    )
+    api, page_size, runtime_python = (
+        build["runtime_android_api"],
+        build["runtime_page_size"],
+        build["runtime_python"],
+    )
+    require(
+        type(api) is int
+        and api >= 24
+        and type(page_size) is int
+        and page_size in {4096, 16384, 65536}
+        and isinstance(runtime_python, str),
+        "invalid measured runtime API/page-size/Python metadata",
+    )
+    report, payload = read_json(runtime_path)
+    require(digest(payload) == expected_hash, "runtime report SHA-256 mismatch")
+    try:
+        validate_runtime_report(
+            report,
+            python,
+            abi,
+            package_group=package,
+            expected_api=api,
+        )
+    except ValueError as error:
+        raise AssemblyError(str(error)) from error
+    platform = report["platform"]
+    require(
+        platform["android_api_level"] == api
+        and platform["page_size"] == page_size
+        and platform["python"] == runtime_python,
+        "runtime report/build metadata mismatch",
+    )
+    return {
+        "runtime_evidence_verified": True,
+        "runtime_report_sha256": expected_hash,
+        "runtime_android_api": api,
+        "runtime_page_size": page_size,
+        "runtime_python": runtime_python,
+        "runtime_package_group": package,
+        "runtime_tests_passed": report["tests"]["run"],
+    }
+
+
 def copy_custom(
     directory: Path,
     stage: Path,
@@ -241,14 +324,7 @@ def copy_custom(
             and build.get("rustc_version", "").startswith("rustc 1.88.0 "),
             "native build toolchain mismatch",
         )
-        require(
-            build.get("runtime_validation")
-            in {
-                "cibuildwheel-android-testbed-passed",
-                "not_run_cross_architecture",
-            },
-            "native build runtime status is not explicit",
-        )
+        evidence.update(check_native_runtime(directory, build, package, python, abi))
         evidence["build_report_sha256"] = digest(build_bytes)
         evidence["reported_runtime_validation"] = build["runtime_validation"]
     report, report_bytes = read_json(directory / "wheel-audit.json")

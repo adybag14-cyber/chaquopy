@@ -52,6 +52,7 @@ PACKAGE_GROUPS = {
     "full": tuple(PACKAGE_SPECS),
 }
 FIXTURE_KEY = "hermes-offline-fixture-not-a-real-key"
+LOG_MARKER = "HERMES_RUNTIME_SMOKE_JSON="
 
 
 def platform_evidence():
@@ -891,13 +892,15 @@ def main(argv=None):
     parser.add_argument("--package", choices=tuple(PACKAGE_GROUPS), default="full")
     parser.add_argument("--require-android", action="store_true")
     parser.add_argument("--json-output", type=Path, help="Also persist the complete JSON evidence")
+    parser.add_argument("--log-marker", action="store_true",
+                        help="Prefix the stdout report with a distinctive logcat marker")
     args = parser.parse_args(argv)
     report = run(args.package, args.require_android)
     output = json.dumps(report, ensure_ascii=True, sort_keys=True)
     if args.json_output is not None:
         args.json_output.parent.mkdir(parents=True, exist_ok=True)
         args.json_output.write_text(output + "\n", encoding="utf-8")
-    print(output, flush=True)
+    print((LOG_MARKER if args.log_marker else "") + output, flush=True)
     return 0 if report["status"] == "passed" else 1
 
 

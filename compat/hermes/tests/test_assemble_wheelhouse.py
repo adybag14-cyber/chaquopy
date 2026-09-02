@@ -13,11 +13,65 @@ import zipfile
 
 from compat.hermes import assemble_wheelhouse as assembler
 from compat.hermes import audit_wheels as auditor
+from compat.hermes import runtime_smoke, verify_app_report
 from compat.hermes.tests.test_audit_wheels import elf, wheel_files, with_record
 
 
 def encode(value):
     return json.dumps(value, sort_keys=True).encode()
+
+
+def native_runtime_report(package, python):
+    """Synthetic complete report, never represented as real device evidence."""
+    soabi = f"cpython-{python.replace('.', '')}-x86_64-linux-android"
+    version, module, native_names = runtime_smoke.PACKAGE_SPECS[package]
+    passed = sorted(verify_app_report.expected_cases(package))
+    return {
+        "schema_version": 1,
+        "status": "passed",
+        "package_group": package,
+        "android_execution_verified": True,
+        "require_android": True,
+        "platform": {
+            "platform": "android",
+            "is_android": True,
+            "python": python + ".7",
+            "implementation": "CPython",
+            "soabi": soabi,
+            "machine": "x86_64",
+            "android_api_level": 27,
+            "page_size": 4096,
+        },
+        "tests": {
+            "run": len(passed),
+            "passed": ["runtime_smoke." + case for case in passed],
+            "failures": [],
+            "errors": [],
+            "skipped": [],
+        },
+        "packages": [
+            {
+                "distribution": package,
+                "version": version,
+                "expected_version": version,
+                "module": {
+                    "module": module,
+                    "native": False,
+                    "file": f"/data/fixture/{module.replace('.', '/')}/__init__.py",
+                },
+                "native_modules": [
+                    {
+                        "module": name,
+                        "native": True,
+                        "file": "/data/fixture/" + name.replace(".", "/") + f".{soabi}.so",
+                    }
+                    for name in native_names
+                ],
+            }
+        ],
+        "network_scope": "loopback-and-in-memory-fixtures-only",
+        "service_inference_verified": False,
+    }
 
 
 def wheel_bytes(
@@ -148,6 +202,16 @@ class AssemblyTests(unittest.TestCase):
                         if abi == "arm64-v8a"
                         else "cibuildwheel-android-testbed-passed",
                     }
+                    if abi == "x86_64":
+                        runtime = native_runtime_report(package, python)
+                        payload = encode(runtime)
+                        (artifact / "runtime-report.json").write_bytes(payload)
+                        report.update(
+                            runtime_report_sha256=hashlib.sha256(payload).hexdigest(),
+                            runtime_android_api=runtime["platform"]["android_api_level"],
+                            runtime_page_size=runtime["platform"]["page_size"],
+                            runtime_python=runtime["platform"]["python"],
+                        )
                     (artifact / "build-report.json").write_bytes(encode(report))
                 if "paired_requirement" in entry:
                     provenance["paired_requirement"] = entry["paired_requirement"]
@@ -224,6 +288,19 @@ class AssemblyTests(unittest.TestCase):
         callback(value)
         path.write_bytes(encode(value))
 
+    def mutate_runtime(self, callback, *, rebind=True, package="jiter"):
+        artifact = f"hermes-native-{package}-3.14-x86_64"
+        relative = f"{artifact}/runtime-report.json"
+        self.mutate(relative, callback)
+        if rebind:
+            payload = (self.downloads / relative).read_bytes()
+            self.mutate(
+                f"{artifact}/build-report.json",
+                lambda build: build.update(
+                    runtime_report_sha256=hashlib.sha256(payload).hexdigest()
+                ),
+            )
+
     def metadata(self, package="helper", version="1.0", callback=None):
         url = f"https://pypi.org/pypi/{package}/{version}/json"
         value = json.loads(self.network[url])
@@ -252,6 +329,20 @@ class AssemblyTests(unittest.TestCase):
             arm_evidence["source"]["evidence"]["reported_runtime_validation"],
             "not_run_cross_architecture",
         )
+        self.assertFalse(arm_evidence["source"]["evidence"]["runtime_evidence_verified"])
+        x86 = next(
+            wheel
+            for wheel in report["wheels"]
+            if wheel["package"] == "jiter" and wheel["abis"] == ["x86_64"]
+        )["source"]["evidence"]
+        self.assertTrue(x86["runtime_evidence_verified"])
+        self.assertEqual(x86["runtime_android_api"], 27)
+        self.assertEqual(x86["runtime_page_size"], 4096)
+        self.assertEqual(x86["runtime_python"], "3.14.7")
+        self.assertEqual(x86["runtime_package_group"], "jiter")
+        self.assertEqual(x86["runtime_tests_passed"], 3)
+        self.assertEqual(report["android_api"], 24)
+        self.assertEqual(report["app_python_full_version"], "3.14.0")
 
     def test_python313_and_shared_msgpack(self):
         self.make_artifacts("3.13")
@@ -281,6 +372,173 @@ class AssemblyTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(assembler.AssemblyError, "build did not pass"):
             self.assemble()
+
+    def test_old_label_only_runtime_evidence_is_rejected(self):
+        def strip_binding(build):
+            for key in tuple(build):
+                if key.startswith("runtime_") and key != "runtime_validation":
+                    build.pop(key)
+
+        self.mutate("hermes-native-jiter-3.14-x86_64/build-report.json", strip_binding)
+        with self.assertRaisesRegex(assembler.AssemblyError, "complete runtime report binding"):
+            self.assemble()
+        self.assertFalse(self.fetches)
+        self.assertFalse(self.output.exists())
+
+    def test_missing_runtime_report(self):
+        path = self.downloads / "hermes-native-jiter-3.14-x86_64/runtime-report.json"
+        path.rename(path.with_suffix(".missing"))
+        with self.assertRaisesRegex(assembler.AssemblyError, "missing or linked JSON receipt"):
+            self.assemble()
+
+    def test_runtime_report_hash_mismatch(self):
+        self.mutate_runtime(lambda report: report.update(elapsed_seconds=900), rebind=False)
+        with self.assertRaisesRegex(assembler.AssemblyError, "runtime report SHA-256 mismatch"):
+            self.assemble()
+
+    def test_invalid_runtime_report_hash(self):
+        self.mutate(
+            "hermes-native-jiter-3.14-x86_64/build-report.json",
+            lambda report: report.update(runtime_report_sha256="bad"),
+        )
+        with self.assertRaisesRegex(assembler.AssemblyError, "SHA-256 binding"):
+            self.assemble()
+
+    def test_x86_may_not_claim_cross_architecture_skip(self):
+        self.mutate(
+            "hermes-native-jiter-3.14-x86_64/build-report.json",
+            lambda report: report.update(runtime_validation="not_run_cross_architecture"),
+        )
+        with self.assertRaisesRegex(assembler.AssemblyError, "requires passing Android runtime"):
+            self.assemble()
+
+    def test_arm_may_not_claim_runtime_pass(self):
+        self.mutate(
+            "hermes-native-jiter-3.14-arm64-v8a/build-report.json",
+            lambda report: report.update(runtime_validation="cibuildwheel-android-testbed-passed"),
+        )
+        with self.assertRaisesRegex(assembler.AssemblyError, "ARM.*must not claim"):
+            self.assemble()
+
+    def test_arm_may_not_attach_runtime_report(self):
+        path = self.downloads / "hermes-native-jiter-3.14-arm64-v8a/runtime-report.json"
+        path.write_bytes(encode(native_runtime_report("jiter", "3.14")))
+        with self.assertRaisesRegex(assembler.AssemblyError, "ARM.*unexpected runtime evidence"):
+            self.assemble()
+
+    def test_arm_may_not_attach_runtime_metadata(self):
+        self.mutate(
+            "hermes-native-jiter-3.14-arm64-v8a/build-report.json",
+            lambda report: report.update(runtime_android_api=27),
+        )
+        with self.assertRaisesRegex(assembler.AssemblyError, "ARM.*unexpected runtime evidence"):
+            self.assemble()
+
+    def test_wrong_runtime_group_rejected_even_with_rebound_hash(self):
+        self.mutate_runtime(lambda report: report.update(package_group="pydantic-core"))
+        with self.assertRaisesRegex(assembler.AssemblyError, "selected runtime suite did not pass"):
+            self.assemble()
+
+    def test_runtime_host_platform_rejected(self):
+        self.mutate_runtime(lambda report: report["platform"].update(platform="linux"))
+        with self.assertRaisesRegex(assembler.AssemblyError, "not actual Android"):
+            self.assemble()
+
+    def test_runtime_wrong_machine_rejected(self):
+        self.mutate_runtime(lambda report: report["platform"].update(machine="aarch64"))
+        with self.assertRaisesRegex(assembler.AssemblyError, "selected ABI mismatch"):
+            self.assemble()
+
+    def test_runtime_wrong_python_rejected(self):
+        self.mutate_runtime(lambda report: report["platform"].update(python="3.13.9"))
+        with self.assertRaisesRegex(assembler.AssemblyError, "selected Python mismatch"):
+            self.assemble()
+
+    def test_runtime_wrong_soabi_rejected(self):
+        self.mutate_runtime(
+            lambda report: report["platform"].update(soabi="cpython-314-aarch64-linux-android")
+        )
+        with self.assertRaisesRegex(assembler.AssemblyError, "SOABI mismatch"):
+            self.assemble()
+
+    def test_incomplete_runtime_suite_rejected(self):
+        self.mutate_runtime(
+            lambda report: report["tests"].update(run=1, passed=report["tests"]["passed"][:1])
+        )
+        with self.assertRaisesRegex(assembler.AssemblyError, "required test count mismatch"):
+            self.assemble()
+
+    def test_skipped_runtime_case_rejected(self):
+        self.mutate_runtime(lambda report: report["tests"].update(skipped=["unavailable"]))
+        with self.assertRaisesRegex(assembler.AssemblyError, "failed or skipped tests"):
+            self.assemble()
+
+    def test_duplicate_runtime_cases_rejected(self):
+        self.mutate_runtime(
+            lambda report: report["tests"].update(passed=[report["tests"]["passed"][0]] * 3)
+        )
+        with self.assertRaisesRegex(assembler.AssemblyError, "duplicate.*passed-test"):
+            self.assemble()
+
+    def test_wrong_runtime_package_version_rejected(self):
+        self.mutate_runtime(lambda report: report["packages"][0].update(version="0.1.0"))
+        with self.assertRaisesRegex(assembler.AssemblyError, "pinned version mismatch"):
+            self.assemble()
+
+    def test_missing_native_runtime_module_rejected(self):
+        self.mutate_runtime(lambda report: report["packages"][0].update(native_modules=[]))
+        with self.assertRaisesRegex(assembler.AssemblyError, "native module evidence count"):
+            self.assemble()
+
+    def test_runtime_did_not_require_android_rejected(self):
+        self.mutate_runtime(lambda report: report.update(require_android=False))
+        with self.assertRaisesRegex(assembler.AssemblyError, "Android-required execution"):
+            self.assemble()
+
+    def test_runtime_api_is_not_inferred_from_static_api24(self):
+        self.mutate(
+            "hermes-native-jiter-3.14-x86_64/build-report.json",
+            lambda report: report.update(runtime_android_api=24),
+        )
+        with self.assertRaisesRegex(assembler.AssemblyError, "exact Android API mismatch"):
+            self.assemble()
+
+    def test_runtime_page_size_must_equal_build_report(self):
+        self.mutate(
+            "hermes-native-jiter-3.14-x86_64/build-report.json",
+            lambda report: report.update(runtime_page_size=16384),
+        )
+        with self.assertRaisesRegex(
+            assembler.AssemblyError, "runtime report/build metadata mismatch"
+        ):
+            self.assemble()
+
+    def test_runtime_python_micro_must_equal_build_report(self):
+        self.mutate(
+            "hermes-native-jiter-3.14-x86_64/build-report.json",
+            lambda report: report.update(runtime_python="3.14.0"),
+        )
+        with self.assertRaisesRegex(
+            assembler.AssemblyError, "runtime report/build metadata mismatch"
+        ):
+            self.assemble()
+
+    def test_runtime_metadata_must_use_exact_integer_types(self):
+        self.mutate(
+            "hermes-native-jiter-3.14-x86_64/build-report.json",
+            lambda report: report.update(runtime_android_api=27.0),
+        )
+        with self.assertRaisesRegex(assembler.AssemblyError, "invalid measured runtime"):
+            self.assemble()
+
+    def test_receipt_validation_does_not_execute_tests(self):
+        with (
+            patch.object(runtime_smoke, "run", side_effect=AssertionError("must not run tests")),
+            patch.object(
+                runtime_smoke, "package_evidence", side_effect=AssertionError("no imports")
+            ),
+        ):
+            self.assertTrue(self.assemble()["passed"])
 
     def test_source_archive_hash_mismatch(self):
         self.mutate(

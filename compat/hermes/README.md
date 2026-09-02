@@ -71,13 +71,27 @@ native modules, and pass every selected behavior test. It never turns a host
 test into Android proof. SDK tests use offline HTTP fixtures; aiohttp tests use
 loopback sockets. No real credentials or paid inference calls are needed.
 
-cibuildwheel tests the architecture of the host runner. Therefore an arm64-v8a
+cibuildwheel tests the architecture of the host runner. Its managed `minVersion`
+testbed currently runs **API 27**, which is distinct from the wheel's **API 24**
+build target. The native driver captures the actual test report from Android,
+verifies the complete selected suite and genuine package inventory, and binds
+the report's digest, measured API, Python version, and page size to its build
+receipt. A successful compiler exit alone cannot certify runtime compatibility.
+
+Therefore an arm64-v8a
 wheel cross-built on an x86_64 runner is explicitly labelled
 `not_run_cross_architecture`; it still needs an ARM64 device run. Static 16-KB
 alignment likewise does not replace a real 16-KB-page runtime test.
 
 The standalone app under `android/` uses a separate package name and does not
-install over Hermes. Production Hermes dependency pins, stubs, MCP lifecycle
+install over Hermes. Its hosted matrix tests both Python versions on **API 24
+and API 35** x86_64 emulators. Each job installs only the assembled, audited
+offline wheelhouse, then verifies every expected full-stack test and package
+against the report extracted from that app. It also checks the measured API
+against the matrix entry; a newer emulator cannot stand in for the API-24 gate.
+Only passing, retained reports constitute runtime evidence for those targets.
+
+Production Hermes dependency pins, stubs, MCP lifecycle
 boundaries, signing keys, and release workflows remain unchanged by this lab.
 
 ## Upstream authority

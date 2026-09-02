@@ -195,6 +195,30 @@ class RuntimeSmokeContractTests(unittest.TestCase):
         self.assertEqual(json.loads(stdout.getvalue()), report)
         self.assertEqual(code, 1)
 
+    def test_log_marker_is_opt_in_and_file_remains_plain_json(self):
+        report = {"status": "passed", "tests": {"run": 3}}
+        stdout = io.StringIO()
+        with tempfile.TemporaryDirectory() as folder:
+            target = Path(folder) / "report.json"
+            with mock.patch.object(smoke, "run", return_value=report), \
+                    contextlib.redirect_stdout(stdout):
+                code = smoke.main([
+                    "--package", "jiter", "--log-marker", "--json-output", str(target),
+                ])
+            self.assertEqual(json.loads(target.read_text()), report)
+        self.assertEqual(code, 0)
+        self.assertTrue(stdout.getvalue().startswith("HERMES_RUNTIME_SMOKE_JSON="))
+        self.assertEqual(json.loads(stdout.getvalue().removeprefix(smoke.LOG_MARKER)), report)
+        self.assertEqual(len(stdout.getvalue().splitlines()), 1)
+
+    def test_log_marker_is_emitted_on_failure_too(self):
+        report = {"status": "failed", "preflight_error": "wrong platform"}
+        stdout = io.StringIO()
+        with mock.patch.object(smoke, "run", return_value=report), \
+                contextlib.redirect_stdout(stdout):
+            self.assertEqual(smoke.main(["--package", "jiter", "--log-marker"]), 1)
+        self.assertEqual(json.loads(stdout.getvalue().removeprefix(smoke.LOG_MARKER)), report)
+
 
 if __name__ == "__main__":
     unittest.main()
