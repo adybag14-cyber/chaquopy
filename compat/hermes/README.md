@@ -62,6 +62,9 @@ maintainer's environment cannot silently replace the configured runtime tests.
 `.github/workflows/hermes-compat.yml` runs a separate job for each native
 package/Python/ABI combination. It publishes wheels and JSON evidence as Actions
 artifacts, not Git blobs. An artifact from a failed run is diagnostic only.
+Re-running a job replaces that job's artifact within the same workflow run;
+GitHub's attempt logs retain the earlier failure details. App matrix jobs each
+use one emulator on an isolated runner and share no mutable build directory.
 
 The fork also fixes a real Chaquopy 17.0.0 importer defect in
 `product/runtime/src/main/python/java/android/importer.py`: Python source in the

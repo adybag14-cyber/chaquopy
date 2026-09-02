@@ -99,7 +99,10 @@ def source_inputs(repo_root):
     source_root = root / RUNTIME
     require(source_root.is_dir() and not source_root.is_symlink(), "Missing runtime source tree")
     inventory, contents = [], {}
-    for path in sorted(source_root.rglob("*")):
+    # Path ordering is case-insensitive on Windows but case-sensitive on Linux.
+    # Inventory hashes must instead use the same repository-relative byte order.
+    for path in sorted(source_root.rglob("*"),
+                       key=lambda item: item.relative_to(source_root).as_posix()):
         require(not path.is_symlink(), f"Linked runtime source: {path}")
         if not path.is_file():
             continue

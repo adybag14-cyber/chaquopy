@@ -79,7 +79,7 @@ jobs:
           for sdk_attempt in 1 2 3; do
             if sdkmanager emulator; then
               test -x "$ANDROID_HOME/emulator/emulator"
-              "$ANDROID_HOME/emulator/emulator" -version
+              test -x "$ANDROID_HOME/emulator/qemu/linux-x86_64/qemu-system-x86_64-headless"
               exit 0
             fi
             if [ "$sdk_attempt" -eq 3 ]; then exit 1; fi
@@ -116,6 +116,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: hermes-native-${{ matrix.package }}-${{ matrix.python }}-${{ matrix.abi }}
+          overwrite: true
           path: .artifacts/native/
           if-no-files-found: warn
           retention-days: 30
@@ -161,6 +162,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: hermes-fork-bootstrap-${{ matrix.python }}
+          overwrite: true
           path: .artifacts/bootstrap/
           if-no-files-found: error
           retention-days: 30
@@ -171,7 +173,7 @@ jobs:
     timeout-minutes: 75
     strategy:
       fail-fast: false
-      max-parallel: 1
+      max-parallel: 4
       matrix:
         python: ['3.13', '3.14']
         api: [24, 35]
@@ -229,9 +231,11 @@ jobs:
             -PpythonVersion="$PYTHON_MINOR" -Pwheelhouse="$GITHUB_WORKSPACE/.artifacts/wheelhouse" \
             -Pbootstrap="$GITHUB_WORKSPACE/.artifacts/bootstrap" \
             -PbuildPython="$(command -v python)" assembleDebug assembleDebugAndroidTest lintDebug
+          mkdir -p .artifacts/app
           python compat/hermes/prepare_bootstrap.py verify-apk \
             --apk compat/hermes/android/app/build/outputs/apk/debug/app-debug.apk \
-            --receipt .artifacts/bootstrap/receipt.json --python "$PYTHON_MINOR"
+            --receipt .artifacts/bootstrap/receipt.json --python "$PYTHON_MINOR" \
+            > .artifacts/app/bootstrap-apk-proof.json
       - name: Enable hardware acceleration for app runtime tests
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -264,6 +268,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: hermes-chaquopy-app-${{ matrix.python }}-api${{ matrix.api }}-x86_64
+          overwrite: true
           path: |
             .artifacts/app/
             .artifacts/wheelhouse/wheelhouse-manifest.json
@@ -306,6 +311,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: hermes-msgpack-pure-python
+          overwrite: true
           path: .artifacts/msgpack/
           if-no-files-found: error
           retention-days: 30

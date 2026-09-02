@@ -47,6 +47,7 @@ class PrepareBootstrapTests(unittest.TestCase):
             "java/config.py": b"def nested():\n    return lambda: frozenset({1, 2})\n",
             "setuptools-68.2.2.dist-info/LICENSE": b"original upstream license\n",
             "setuptools-68.2.2.dist-info/METADATA": b"Name: setuptools\nVersion: 68.2.2\n",
+            "setuptools-68.2.2.dist-info/entry_points.txt": b"[console_scripts]\n",
         }
         for name, data in self.source_bytes.items():
             path = self.sources / name
@@ -99,6 +100,20 @@ class PrepareBootstrapTests(unittest.TestCase):
         )]
         self.assertEqual(len({item["archive_sha256"] for item in inspected}), 3)
         self.assertEqual(len({item["importer_code_sha256"] for item in inspected}), 1)
+
+    def test_source_inventory_order_does_not_depend_on_windows_path_comparison(self):
+        class CaseInsensitivePath(type(Path())):
+            def __lt__(self, other):
+                return str(self).casefold() < str(other).casefold()
+
+        entries = [CaseInsensitivePath(path) for path in self.sources.rglob("*")]
+        with patch.object(Path, "rglob", return_value=iter(entries)):
+            context, _ = bootstrap.source_inputs(self.repo)
+        names = [item["path"] for item in context["source_inventory"]]
+        self.assertEqual(names, sorted(self.source_bytes))
+        ordinary, _ = bootstrap.source_inputs(self.repo)
+        self.assertEqual(context["source_inventory_sha256"], ordinary["source_inventory_sha256"])
+        self.assertEqual(context["input_sha256"], ordinary["input_sha256"])
 
     def test_old_stock_importer_bytecode_cannot_pass_source_validation(self):
         old = b"def find_module(name):\n    return ('stock', name)\n"
