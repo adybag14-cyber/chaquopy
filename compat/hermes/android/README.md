@@ -81,6 +81,13 @@ and stage its own `runtime:zipPython-3.13` bootstrap first.
 Use an explicitly selected device serial. This app's package ID is distinct, so
 installing it does not overwrite production Hermes or its data.
 
+The project sets `android.injected.androidTest.leaveApksInstalledAfterRun=true`
+so AGP keeps the app and its original private report after instrumentation.
+The hosted workflow then reads that report with `adb run-as`, validates it, and
+disposes of the dedicated emulator. Reinstalling the app after test cleanup
+would not recover the deleted evidence. This retention flag is also used by
+[AndroidX's test infrastructure](https://android.googlesource.com/platform/frameworks/support/+/eb74b1a4b3527414639994574a201f125aff90f5).
+
 ```sh
 adb -s SERIAL install -r compat/hermes/android/app/build/outputs/apk/debug/app-debug.apk
 adb -s SERIAL install -r compat/hermes/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
