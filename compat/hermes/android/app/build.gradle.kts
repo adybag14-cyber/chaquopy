@@ -1,4 +1,6 @@
+import com.chaquo.python.PythonPlugin
 import java.security.MessageDigest
+import org.gradle.api.artifacts.Configuration
 
 plugins {
     id("com.android.application")
@@ -23,6 +25,12 @@ val canonicalSmoke = rootProject.file("../runtime_smoke.py")
 val smokeDigest = generatedRoot.resolve("runtime_smoke.sha256")
 val generatedVersion = generatedRoot.resolve("python-version.txt")
 val generatedWheelhouse = generatedRoot.resolve("wheelhouse.txt")
+val bootstrapRoot = providers.gradleProperty("bootstrap").orNull?.let { rootProject.file(it).canonicalFile }
+    ?: throw GradleException("Pass -Pbootstrap=/absolute/path/to/verified/fork/bootstrap")
+val bootstrapPath = generatedRoot.resolve("bootstrap-path.txt")
+val bootstrapVersionFile = generatedRoot.resolve("bootstrap-version.txt")
+val bootstrapReceiptHash = generatedRoot.resolve("bootstrap-receipt.sha256")
+val bootstrapArchiveHash = generatedRoot.resolve("bootstrap-archive.sha256")
 fun digest(file: File): String = MessageDigest.getInstance("SHA-256")
     .digest(file.readBytes()).joinToString("") { "%02x".format(it.toInt() and 0xff) }
 
@@ -39,6 +47,17 @@ require(file(generatedWheelhouse.readText().trim()).canonicalFile == wheelhouse)
 require(digest(generatedSmoke) == smokeDigest.readText().trim() && digest(canonicalSmoke) == digest(generatedSmoke)) {
     "Generated runtime_smoke.py is stale or modified; rerun prepare_app.py."
 }
+require(listOf(bootstrapPath, bootstrapVersionFile, bootstrapReceiptHash, bootstrapArchiveHash).all { it.isFile }) {
+    "Run prepare_app.py with --bootstrap before building the fork runtime."
+}
+val bootstrapVersion = bootstrapVersionFile.readText().trim()
+require(rootProject.file(bootstrapPath.readText().trim()).canonicalFile == bootstrapRoot &&
+    bootstrapVersion == rootProject.file("../../../VERSION.txt").readText().trim() &&
+    digest(bootstrapRoot.resolve("receipt.json")) == bootstrapReceiptHash.readText().trim()) {
+    "The prepared fork bootstrap path, version, or receipt changed; rerun prepare_app.py."
+}
+val expectedBootstrapHash = bootstrapArchiveHash.readText().trim()
+require(expectedBootstrapHash.matches(Regex("[0-9a-f]{64}"))) { "Invalid bootstrap archive digest" }
 
 android {
     namespace = "com.mobilefork.chaquopycompat"
@@ -84,4 +103,37 @@ chaquopy {
 dependencies {
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
+}
+
+// Chaquopy 17 keeps runtime dependencies in its own detached configurations.
+// Only substitute the source-built Python bootstrap: Java/JNI stay on stable 17.0.0.
+afterEvaluate {
+    val pythonPlugin = plugins.getPlugin(PythonPlugin::class.java)
+    val bootstrapConfigs = pythonPlugin.configs.filterKeys { it.endsWith("RuntimeBootstrap") }
+    check(bootstrapConfigs.keys == setOf("pythonDebugRuntimeBootstrap", "pythonReleaseRuntimeBootstrap")) {
+        "Chaquopy's pinned bootstrap configuration contract changed: ${bootstrapConfigs.keys}"
+    }
+    bootstrapConfigs.values.forEach { config ->
+        check(config.state == Configuration.State.UNRESOLVED) { "Bootstrap resolved before fork selection" }
+        config.resolutionStrategy.eachDependency {
+            if (requested.group == "com.chaquo.python.runtime" && requested.name == "bootstrap") {
+                useVersion(bootstrapVersion)
+                because("Qualify the hash-verified fork importer with stable Chaquopy Java/JNI")
+            }
+        }
+    }
+    val verifyForkBootstrap = tasks.register("verifyForkBootstrap") {
+        doLast {
+            bootstrapConfigs.values.forEach { config ->
+                val artifact = config.resolvedConfiguration.resolvedArtifacts.single()
+                val identity = artifact.moduleVersion.id
+                check(identity.group == "com.chaquo.python.runtime" && identity.name == "bootstrap" &&
+                    identity.version == bootstrapVersion && artifact.classifier == selectedPython &&
+                    artifact.extension == "imy" && digest(artifact.file) == expectedBootstrapHash) {
+                    "Resolved bootstrap differs from the verified fork artifact: $identity"
+                }
+            }
+        }
+    }
+    tasks.named("preBuild") { dependsOn(verifyForkBootstrap) }
 }

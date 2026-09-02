@@ -29,8 +29,9 @@ patch which pins Maturin to 1.15.0. It never retags a host wheel as Android.
 
 ## Local preparation and tests
 
-The helper tests run on Windows, Linux, or macOS; only the small `packaging`
-library is needed for dependency-marker validation:
+The helper tests run on Windows, Linux, or macOS with CPython 3.13 or 3.14;
+only the small `packaging` library is needed for dependency-marker validation.
+Bootstrap validation must use the same Python minor as the compiled archive:
 
 ```sh
 python -m pip install packaging==26.3
@@ -61,6 +62,23 @@ maintainer's environment cannot silently replace the configured runtime tests.
 `.github/workflows/hermes-compat.yml` runs a separate job for each native
 package/Python/ABI combination. It publishes wheels and JSON evidence as Actions
 artifacts, not Git blobs. An artifact from a failed run is diagnostic only.
+
+The fork also fixes a real Chaquopy 17.0.0 importer defect in
+`product/runtime/src/main/python/java/android/importer.py`: Python source in the
+common APK archive could shadow its native extension in the ABI archive. Loader
+suffix precedence now applies across all constituent archives, while package
+priority and same-suffix archive priority are preserved. The regression suite
+executes the production finder against split-archive fixtures.
+
+The app consumes a **source-built fork Python bootstrap**, using the version in
+`VERSION.txt`, alongside the stable 17.0.0 Gradle plugin and Java/JNI libraries.
+The upstream `runtime:zipPython-*` tasks build that bootstrap. The helper checks
+every compiled module against current source, records exact archive/source/code
+hashes, and stages an isolated Maven repository. Only the bootstrap dependency
+uses the fork version. Its repository is exclusive: no upstream bootstrap
+fallback is allowed. Gradle verifies the resolved artifact before building, and
+the APK gate verifies the exact bootstrap bytes actually embedded in the APK.
+There is no runtime monkeypatch or wheel-source deletion to hide the loader bug.
 
 `audit_wheels.py` checks canonical ZIP layout, complete RECORD hashes, wheel
 identity/tags, target ELF architecture, actual CPython initializer exports,

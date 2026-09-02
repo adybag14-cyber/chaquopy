@@ -158,9 +158,32 @@ class RuntimeSmokeContractTests(unittest.TestCase):
         })
         self.assertEqual(smoke.PACKAGE_SPECS["pydantic"][0], "2.13.5")
         self.assertEqual(smoke.PACKAGE_SPECS["pydantic-core"][0], "2.46.5")
+        self.assertEqual(set(smoke.PACKAGE_SPECS["aiohttp"][2]), {
+            "aiohttp._http_parser", "aiohttp._http_writer", "aiohttp._websocket.reader_c",
+            "aiohttp._websocket.mask",
+        })
         self.assertEqual(smoke.build_suite("jiter").countTestCases(), 3)
         self.assertEqual(smoke.build_suite("pydantic-core").countTestCases(), 2)
         self.assertGreaterEqual(smoke.build_suite("full").countTestCases(), 23)
+
+    def test_aiohttp_reader_facade_rejects_either_python_fallback(self):
+        native = types.SimpleNamespace(WebSocketReader=object(), WebSocketDataQueue=object())
+        for replaced in (None, "WebSocketReader", "WebSocketDataQueue"):
+            facade = types.SimpleNamespace(**vars(native))
+            if replaced is not None:
+                setattr(facade, replaced, object())
+            modules = {"aiohttp._websocket.reader": facade, "aiohttp._websocket.reader_c": native}
+            with (
+                self.subTest(replaced=replaced),
+                mock.patch.object(
+                    smoke.importlib, "import_module", side_effect=modules.__getitem__
+                ),
+            ):
+                if replaced is None:
+                    smoke.assert_aiohttp_native_reader_facade()
+                else:
+                    with self.assertRaisesRegex(AssertionError, "native " + replaced):
+                        smoke.assert_aiohttp_native_reader_facade()
 
     def test_sdk_streaming_cases_stay_in_full_lane_only(self):
         cases = (smoke.OpenAIResponsesAndStreamsTests, smoke.OpenAIAsyncResponsesAndStreamsTests)

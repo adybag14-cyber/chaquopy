@@ -491,8 +491,11 @@ class AssetFinder:
         prefix = join(self.prefix, mod_name.rpartition(".")[2])
         # Packages take priority over modules (see FileFinder.find_spec).
         for infix in ["/__init__", ""]:
-            for zf in self.zip_files:
-                for suffix, loader_cls in LOADERS.items():
+            # These ZIPs form one directory. Apply loader precedence across all
+            # of them, so common Python source cannot shadow an ABI extension.
+            # ZIP order still breaks ties between files with the same suffix.
+            for suffix, loader_cls in LOADERS.items():
+                for zf in self.zip_files:
                     try:
                         zip_info = zf.getinfo(prefix + infix + suffix)
                     except KeyError:

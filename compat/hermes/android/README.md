@@ -1,7 +1,9 @@
 # Nonproduction Hermes / Chaquopy compatibility app
 
 This separate app is `com.mobilefork.chaquopycompat`, not the production Hermes
-package. It embeds genuine distributions with Chaquopy **17.0.0**, Android Gradle
+package. It embeds genuine distributions with the Chaquopy **17.0.0** plugin and
+Java/JNI libraries, plus the fork's **source-built Python bootstrap** (version
+from `VERSION.txt`). This contains the split-archive native-loader fix. Android Gradle
 Plugin **8.9.3**, Gradle **8.11.1**, minimum Android API **24**, compile/target API
 **35**, and both `arm64-v8a` and `x86_64`. Python **3.14** is the default; run 3.13
 as the comparison lane. The existing upstream demo uses a different Gradle
@@ -10,8 +12,11 @@ committed here. CI can provision Gradle 8.11.1 with `gradle/actions/setup-gradle
 
 ## Inputs and preparation
 
-Use JDK 17, Android SDK platform 35 and a host Python matching the selected
-major/minor. The wheelhouse must contain the artifact-audited jiter 0.16.0 and
+The app uses JDK 17 and Android SDK platform 35. Building the fork bootstrap uses
+JDK 11 for the upstream Gradle 7.0.2 wrapper and requires SDK platform 36 during
+project configuration. CI pins the build interpreters to CPython **3.13.15** and
+**3.14.7**; use a matching minor to validate compiled bootstrap code, preferably
+the same patch version. The wheelhouse must contain the artifact-audited jiter 0.16.0 and
 pydantic-core 2.46.5 Android wheels for **both ABIs** of the selected Python, plus
 the genuinely built `msgpack-1.2.2-py3-none-any.whl`. Merge wheels directly into
 one directory; pip `--find-links` does not search nested artifact directories.
@@ -22,27 +27,54 @@ assembly. Dependencies are pinned in `requirements.txt`; optional-extension depe
 have official pure-Python wheels. This is not a source-build fallback or a Hermes
 stub substitution.
 
-From the repository root (replace paths with your actual verified inputs):
+Build the bootstrap from the repository root with JDK 11 and the selected
+`python3.14` on PATH (the task uses `py -3.14` on Windows):
+
+```sh
+bash product/gradlew -p product --no-daemon --console=plain runtime:zipPython-3.14
+python compat/hermes/prepare_bootstrap.py stage \
+  --archive product/runtime/build/bootstrap/bootstrap-3.14.imy \
+  --python 3.14 --output /absolute/path/to/fork-bootstrap
+```
+
+The helper validates all compiled modules and license/metadata files against the
+fork source without executing archived code. It preserves the original archive
+bytes and produces a narrowly scoped Maven repository and `receipt.json`.
+It refuses a stock, stale or otherwise mismatching bootstrap.
+
+Switch to JDK 17 for the app, still using the selected host Python:
 
 ```sh
 python compat/hermes/prepare_app.py \
-  --wheelhouse /absolute/path/to/wheelhouse --python-version 3.14
+  --wheelhouse /absolute/path/to/wheelhouse --python-version 3.14 \
+  --bootstrap /absolute/path/to/fork-bootstrap
 gradle -p compat/hermes/android --no-daemon --console=plain \
   -PpythonVersion=3.14 -Pwheelhouse=/absolute/path/to/wheelhouse \
+  -Pbootstrap=/absolute/path/to/fork-bootstrap \
   -PbuildPython=/absolute/path/to/python3.14 \
   assembleDebug assembleDebugAndroidTest lintDebug
+
+python compat/hermes/prepare_bootstrap.py verify-apk \
+  --apk compat/hermes/android/app/build/outputs/apk/debug/app-debug.apk \
+  --receipt /absolute/path/to/fork-bootstrap/receipt.json --python 3.14
 ```
 
 `prepare_app.py` copies the single canonical `compat/hermes/runtime_smoke.py`
 into ignored `.generated/python`, records its SHA-256 and the wheel inventory,
 and refuses missing/ambiguous wheel inputs. Gradle rejects a stale smoke copy,
-Python-version mismatch, or different wheelhouse. Generated sources survive
+Python-version mismatch, different wheelhouse, or changed bootstrap receipt.
+Only the bootstrap module is resolved from the exclusive local Maven repository;
+Java/JNI and the plugin remain on stock 17.0.0. Before compilation, Gradle checks
+both bootstrap configurations' version, classifier and exact digest. The APK
+check then verifies that the same archive bytes are actually embedded.
+Generated sources survive
 `gradle clean`. The receipt is `.generated/preparation.json`. These preparation
 checks record the input bytes; the separate wheel audit verifies archive/ELF
 contents. Neither preparation nor APK compilation certifies Android execution.
 
 For Python 3.13, rerun preparation with `--python-version 3.13`, use
-`-PpythonVersion=3.13`, and select an actual Python 3.13 build interpreter.
+`-PpythonVersion=3.13`, and select an actual Python 3.13 build interpreter. Build
+and stage its own `runtime:zipPython-3.13` bootstrap first.
 
 ## Actual device or emulator gate
 

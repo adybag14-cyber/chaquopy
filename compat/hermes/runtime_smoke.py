@@ -39,7 +39,8 @@ PACKAGE_SPECS = {
     "msgpack": ("1.2.2", "msgpack", ()),
     "aiohttp": (
         "3.14.3", "aiohttp",
-        ("aiohttp._http_parser", "aiohttp._http_writer", "aiohttp._websocket.reader_c"),
+        ("aiohttp._http_parser", "aiohttp._http_writer", "aiohttp._websocket.reader_c",
+         "aiohttp._websocket.mask"),
     ),
     "openai": ("2.54.0", "openai", ()),
     "anthropic": ("0.125.0", "anthropic", ()),
@@ -255,10 +256,22 @@ class MsgpackTests(unittest.TestCase):
             msgpack.unpackb(b"\xc1")
 
 
+def assert_aiohttp_native_reader_facade():
+    reader = importlib.import_module("aiohttp._websocket.reader")
+    native = importlib.import_module("aiohttp._websocket.reader_c")
+    for name in ("WebSocketReader", "WebSocketDataQueue"):
+        if getattr(reader, name) is not getattr(native, name):
+            raise AssertionError(f"aiohttp reader facade does not use native {name}")
+
+
 class AiohttpTests(unittest.IsolatedAsyncioTestCase):
     async def test_loopback_http_and_websocket(self):
         import aiohttp
         from aiohttp import web
+
+        # Native modules being importable is insufficient if the public facade
+        # selected the Python fallback (for example through NO_EXTENSIONS).
+        assert_aiohttp_native_reader_facade()
 
         async def echo(request):
             body = await request.json()
