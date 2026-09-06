@@ -19,6 +19,7 @@ from pathlib import Path
 import platform
 import queue
 import shutil
+import shlex
 import signal
 import subprocess
 import sys
@@ -36,7 +37,8 @@ ABI_IDENTIFIERS = {"arm64-v8a": "arm64_v8a", "x86_64": "x86_64"}
 PACKAGES = ("jiter", "pydantic-core")
 
 
-def build_environment(package: str) -> dict[str, str]:
+def build_environment(package: str, *, build_only: bool = False,
+                      source_dir: Path | None = None) -> dict[str, str]:
     # Public sdists/crates do not need the maintainer's ambient credentials or
     # settings which might silently skip tests or change the target platform.
     environment = {
@@ -45,21 +47,34 @@ def build_environment(package: str) -> dict[str, str]:
         if not name.startswith("CIBW_")
         and not name.endswith(("_TOKEN", "_SECRET", "_PASSWORD", "_API_KEY"))
     }
+    rust_flags = (
+        "-C link-arg=-Wl,-z,max-page-size=16384 "
+        "-C link-arg=-Wl,-z,common-page-size=16384"
+    )
+    if source_dir is not None:
+        # Rust embeds source paths in panic sites even in stripped release ELF.
+        # Normalize both package and Cargo registry paths across build roots.
+        mappings = [(Path.home(), "/hermes-build-home"),
+                    (Path(environment.get("CARGO_HOME", Path.home() / ".cargo")), "/hermes-cargo"),
+                    (source_dir.resolve(), "/hermes-source")]
+        for source, target in mappings:
+            if any(character.isspace() for character in str(source)):
+                raise ValueError("Android release build paths must not contain whitespace")
+            rust_flags += f" --remap-path-prefix={source}={target}"
     environment.update(
         {
             "CIBW_BUILD_FRONTEND": "build",
             "CIBW_ENVIRONMENT_ANDROID": (
                 "ANDROID_API_LEVEL=24 "
                 "MATURIN_PEP517_ARGS=--locked "
-                "RUSTFLAGS='-C link-arg=-Wl,-z,max-page-size=16384 "
-                "-C link-arg=-Wl,-z,common-page-size=16384'"
+                f"RUSTFLAGS={shlex.quote(rust_flags)}"
             ),
             "CIBW_TEST_COMMAND_ANDROID": (
                 "python -m compat.hermes.runtime_smoke "
                 f"--package {package} --require-android --log-marker"
             ),
             "CIBW_TEST_REQUIRES_ANDROID": "typing_extensions==4.15.0",
-            "CIBW_TEST_SKIP": "",
+            "CIBW_TEST_SKIP": "*" if build_only else "",
             "CIBW_BUILD_VERBOSITY": "1",
             "SOURCE_DATE_EPOCH": "1754006400",
         }
@@ -154,7 +169,12 @@ def run_logged(command, environment, timeout, log_path):
 
 
 def record_runtime_evidence(report, runtime_reports, output, *, python, abi,
-                            package, host_machine):
+                            package, host_machine, build_only=False):
+    if build_only:
+        if runtime_reports:
+            raise ValueError("Unexpected runtime report for an explicit build-only invocation")
+        report["runtime_validation"] = "not_run_explicit_build_only"
+        return
     if host_machine in {"arm64", "aarch64"}:
         native_abi = "arm64-v8a"
     elif host_machine in {"x86_64", "AMD64"}:
@@ -187,6 +207,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--source-cache", required=True, type=Path)
     parser.add_argument("--timeout", type=int, default=3600)
+    parser.add_argument("--build-only", action="store_true", help=(
+        "Compile/audit without launching a testbed, for downstream source builds. "
+        "Never produces runtime certification; the app/device matrix remains required."))
     args = parser.parse_args(argv)
     if platform.system() not in {"Linux", "Darwin"}:
         parser.error("Android wheels require Linux/macOS; use WSL or the hosted workflow")
@@ -207,6 +230,7 @@ def main(argv: list[str] | None = None) -> int:
         "started_at": datetime.now(timezone.utc).isoformat(),
         "build_status": "failed",
         "runtime_validation": "not_run",
+        "build_only": args.build_only,
         "host_system": platform.system(),
         "host_machine": platform.machine(),
         "source_lock_sha256": hashlib.sha256(
@@ -241,7 +265,8 @@ def main(argv: list[str] | None = None) -> int:
         command = command_for(source_dir, wheel_dir, args.python, args.abi)
         report["command"] = command
         runtime_reports = run_logged(
-            command, build_environment(args.package), args.timeout,
+            command, build_environment(args.package, build_only=args.build_only,
+                                       source_dir=source_dir), args.timeout,
             output / "cibuildwheel.log",
         )
         subprocess.run(
@@ -256,6 +281,7 @@ def main(argv: list[str] | None = None) -> int:
         record_runtime_evidence(
             report, runtime_reports, output, python=args.python, abi=args.abi,
             package=args.package, host_machine=platform.machine(),
+            build_only=args.build_only,
         )
         report["build_status"] = "passed"
         return 0

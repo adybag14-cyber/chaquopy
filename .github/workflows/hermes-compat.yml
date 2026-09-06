@@ -155,8 +155,8 @@ jobs:
           PYTHONHASHSEED: '0'
         run: |
           bash product/gradlew -p product --no-daemon --console=plain "runtime:zipPython-$PYTHON_MINOR"
-          python compat/hermes/prepare_bootstrap.py stage \
-            --archive "product/runtime/build/bootstrap/bootstrap-$PYTHON_MINOR.imy" \
+          python compat/hermes/build_bootstrap.py \
+            --compare-upstream "product/runtime/build/bootstrap/bootstrap-$PYTHON_MINOR.imy" \
             --python "$PYTHON_MINOR" --output .artifacts/bootstrap
       - name: Preserve the source-verified fork bootstrap
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

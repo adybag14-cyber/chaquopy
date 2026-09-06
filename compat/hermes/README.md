@@ -57,6 +57,14 @@ pinned cibuildwheel, the Android API-24 target, Cargo's existing lockfile, and
 16-KB linker alignment. It also clears ambient cibuildwheel skip settings so a
 maintainer's environment cannot silently replace the configured runtime tests.
 
+Downstream source-only release builders (including F-Droid containers without a
+testbed) may explicitly pass `--build-only`. This still verifies locked source,
+build tools and the complete static wheel audit, but records
+`not_run_explicit_build_only` and rejects any unexpected runtime receipt. It is
+not a substitute for this repository's unchanged hosted runtime matrix or the
+consumer application's device gates. Source and Cargo paths are remapped in
+Rust output so different build directories do not leak into release ELF files.
+
 ## Evidence gates
 
 `.github/workflows/hermes-compat.yml` runs a separate job for each native
@@ -82,6 +90,14 @@ uses the fork version. Its repository is exclusive: no upstream bootstrap
 fallback is allowed. Gradle verifies the resolved artifact before building, and
 the APK gate verifies the exact bootstrap bytes actually embedded in the APK.
 There is no runtime monkeypatch or wheel-source deletion to hide the loader bug.
+
+For source-only downstream packaging without Chaquopy's Java-11/Gradle-7 build
+toolchain, `PYTHONHASHSEED=0 python compat/hermes/build_bootstrap.py --python 3.13
+--output /new/bootstrap` compiles the same selected sources and license files.
+It uses stored ZIP entries, fixed modes/timestamps, relative filenames and
+hash-based PYC headers. The independent bootstrap validator checks the complete
+compiled code and license inventory before accepting the output. This alternate
+packaging path does not rebuild or claim changes to Java/JNI/plugin components.
 
 `audit_wheels.py` checks canonical ZIP layout, complete RECORD hashes, wheel
 identity/tags, target ELF architecture, actual CPython initializer exports,

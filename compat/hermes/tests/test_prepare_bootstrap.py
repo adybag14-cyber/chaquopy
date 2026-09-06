@@ -18,6 +18,7 @@ import warnings
 import zipfile
 
 from compat.hermes import prepare_bootstrap as bootstrap
+from compat.hermes import build_bootstrap
 
 
 PYTHON = f"{sys.version_info.major}.{sys.version_info.minor}"
@@ -100,6 +101,37 @@ class PrepareBootstrapTests(unittest.TestCase):
         )]
         self.assertEqual(len({item["archive_sha256"] for item in inspected}), 3)
         self.assertEqual(len({item["importer_code_sha256"] for item in inspected}), 1)
+
+    def test_source_builder_matches_upstream_compilation_and_license_selection(self):
+        data = build_bootstrap.archive_bytes(PYTHON, repo_root=self.repo)
+        built = bootstrap.inspect_archive(data, PYTHON, repo_root=self.repo)
+        upstream = bootstrap.inspect_archive(self.archive_bytes(flags=3), PYTHON, repo_root=self.repo)
+        self.assertEqual(built["source_inventory"], upstream["source_inventory"])
+        self.assertEqual(
+            [(row["source_path"], row["code_sha256"]) for row in built["bytecode_inventory"]],
+            [(row["source_path"], row["code_sha256"]) for row in upstream["bytecode_inventory"]],
+        )
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            for entry in archive.infolist():
+                self.assertEqual(entry.compress_type, zipfile.ZIP_STORED)
+                self.assertEqual(entry.date_time, (1980, 2, 1, 0, 0, 0))
+        self.archive.write_bytes(self.archive_bytes(flags=3))
+        result = build_bootstrap.build(PYTHON, self.output, repo_root=self.repo,
+                                       compare_upstream=self.archive)
+        self.assertEqual(self.validate()["archive_sha256"], bootstrap.sha256(data))
+        self.assertEqual(result["archive_sha256"], bootstrap.sha256(data))
+        with self.assertRaisesRegex(ValueError, "new directory"):
+            build_bootstrap.build(PYTHON, self.output, repo_root=self.repo)
+
+    def test_source_builder_ignores_checkout_paths_and_file_mtimes(self):
+        import shutil
+        other = self.root / "another-checkout"
+        shutil.copytree(self.repo, other)
+        for source in (other / bootstrap.RUNTIME).rglob("*"):
+            if source.is_file():
+                os.utime(source, (123, 123))
+        self.assertEqual(build_bootstrap.archive_bytes(PYTHON, repo_root=self.repo),
+                         build_bootstrap.archive_bytes(PYTHON, repo_root=other))
 
     def test_source_inventory_order_does_not_depend_on_windows_path_comparison(self):
         class CaseInsensitivePath(type(Path())):

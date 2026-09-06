@@ -69,6 +69,34 @@ class NativeBuildContractTests(unittest.TestCase):
         self.assertEqual(report["runtime_python"], "3.14.0")
         self.assertEqual(report["runtime_validation"], "cibuildwheel-android-testbed-passed")
 
+    def test_explicit_build_only_never_claims_runtime_certification(self):
+        environment = build_native.build_environment("jiter", build_only=True)
+        self.assertEqual(environment["CIBW_TEST_SKIP"], "*")
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            report = {}
+            build_native.record_runtime_evidence(
+                report, [], output, python="3.13", abi="x86_64", package="jiter",
+                host_machine="x86_64", build_only=True,
+            )
+            self.assertEqual(report["runtime_validation"], "not_run_explicit_build_only")
+            self.assertFalse((output / "runtime-report.json").exists())
+            with self.assertRaisesRegex(ValueError, "build-only"):
+                build_native.record_runtime_evidence(
+                    {}, [{"status": "passed"}], output, python="3.13", abi="x86_64",
+                    package="jiter", host_machine="x86_64", build_only=True,
+                )
+
+    def test_package_and_registry_paths_are_remapped_for_reproducibility(self):
+        source = Path("release-source").resolve()
+        environment = build_native.build_environment("jiter", source_dir=source)
+        flags = environment["CIBW_ENVIRONMENT_ANDROID"]
+        self.assertIn(f"--remap-path-prefix={source}=/hermes-source", flags)
+        self.assertIn("=/hermes-cargo", flags)
+        self.assertIn("=/hermes-build-home", flags)
+        with self.assertRaisesRegex(ValueError, "whitespace"):
+            build_native.build_environment("jiter", source_dir=Path("bad build path"))
+
     def test_missing_duplicate_and_invalid_runtime_receipts_fail_closed(self):
         measured = test_verify_app_report.AppReportTests().report("jiter")
         for reports in ([], [measured, measured], [{"status": "passed"}]):
