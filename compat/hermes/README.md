@@ -64,6 +64,9 @@ build tools and the complete static wheel audit, but records
 not a substitute for this repository's unchanged hosted runtime matrix or the
 consumer application's device gates. Source and Cargo paths are remapped in
 Rust output so different build directories do not leak into release ELF files.
+The generated CycloneDX SBOM retains all dependency/license data but remaps its
+local source-root references to `/hermes-source`; its wheel RECORD is regenerated
+and re-audited. This avoids a second build-root leak in Maturin's SBOM metadata.
 
 ## Evidence gates
 

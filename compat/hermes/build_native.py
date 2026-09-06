@@ -28,8 +28,11 @@ import time
 
 try:
     from .verify_app_report import validate as validate_runtime_report
+    from . import audit_wheels, reproducible_wheel
 except ImportError:
     from verify_app_report import validate as validate_runtime_report
+    import audit_wheels
+    import reproducible_wheel
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -269,6 +272,9 @@ def main(argv: list[str] | None = None) -> int:
                                        source_dir=source_dir), args.timeout,
             output / "cibuildwheel.log",
         )
+        for wheel in wheel_dir.glob("*.whl"):
+            audit_wheels.audit_wheel(wheel, args.python, args.abi)
+            reproducible_wheel.normalize(wheel, source_dir)
         subprocess.run(
             [
                 sys.executable, str(ROOT / "compat/hermes/audit_wheels.py"),
