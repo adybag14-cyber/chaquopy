@@ -121,6 +121,40 @@ Only passing, retained reports constitute runtime evidence for those targets.
 Production Hermes dependency pins, stubs, MCP lifecycle
 boundaries, signing keys, and release workflows remain unchanged by this lab.
 
+## Full Hermes consumer experiment (Python 3.13)
+
+`prepare_hermes.py` extends the verified SDK wheelhouse with Hermes's complementary
+Android dependencies. It preserves the SDK wheel bytes, downloads only the extra
+packages, and resolves the final dependency closure for both ABIs offline. It
+stages the source-verified fork bootstrap and two runtime probes under a closed
+SHA-256 inventory. Use Python 3.13 and a new output directory:
+
+```sh
+python compat/hermes/prepare_hermes.py prepare \
+  --hermes-root /path/to/hermes-agent \
+  --wheelhouse /path/to/verified-sdk-wheelhouse-313 \
+  --bootstrap /path/to/hermes-fork-bootstrap-3.13 \
+  --output /path/to/new-hermes-consumer
+python compat/hermes/prepare_hermes.py verify --root /path/to/new-hermes-consumer
+```
+
+In the compatible Hermes checkout, build with
+`-PhermesChaquopyLab=/path/to/new-hermes-consumer`. Without that property, Hermes
+retains its normal dependency set. The lab property selects genuine Anthropic,
+FAL, OpenAI, Pydantic and native Android wheels instead of raising placeholders.
+`hermes_runtime_smoke.py` exercises real Hermes imports, SessionDB, two streamed
+agent turns against a loopback OpenAI-compatible HTTP fixture, and worker
+shutdown. Its fixture also handles the auxiliary non-streamed title request;
+this must not be confused with another primary agent turn.
+
+The consumer output is not a certificate. Run Hermes's opt-in
+`ChaquopyHermesIntegrationInstrumentedTest` and verify its SDK report with
+`verify_app_report.py`. The first full-Hermes integration is Python 3.13 only:
+Hermes's own Python upper bound remains below 3.14. The independent dependency
+app's passing 3.14 matrix does not establish full-Hermes 3.14 compatibility.
+Model inference, guest command authority, ARM64 runtime and 16-KB-page behavior
+remain separate tests. No physical-device release is authorized by these steps.
+
 ## Upstream authority
 
 - [Chaquopy version matrix](https://chaquo.com/chaquopy/doc/current/versions.html)
