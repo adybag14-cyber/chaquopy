@@ -133,6 +133,16 @@ class PrepareBootstrapTests(unittest.TestCase):
         self.assertEqual(build_bootstrap.archive_bytes(PYTHON, repo_root=self.repo),
                          build_bootstrap.archive_bytes(PYTHON, repo_root=other))
 
+    def test_source_builder_supports_compiler_slice_constants(self):
+        # CPython 3.14 folds constant slices into co_consts; marshal formats
+        # before 5 cannot serialize them. Compile on the actual host minor.
+        source = b"def sliced(value):\n    return value[1:4]\n"
+        path = self.sources / "java/sliced.py"
+        path.write_bytes(source)
+        data = build_bootstrap.archive_bytes(PYTHON, repo_root=self.repo)
+        report = bootstrap.inspect_archive(data, PYTHON, repo_root=self.repo)
+        self.assertIn("java/sliced.py", [row["source_path"] for row in report["bytecode_inventory"]])
+
     def test_source_inventory_order_does_not_depend_on_windows_path_comparison(self):
         class CaseInsensitivePath(type(Path())):
             def __lt__(self, other):

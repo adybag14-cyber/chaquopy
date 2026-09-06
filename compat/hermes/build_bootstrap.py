@@ -36,7 +36,8 @@ def archive_bytes(python, *, repo_root=verifier.ROOT):
             if item["kind"] == "python":
                 code = compile(source, "./" + item["path"], "exec", dont_inherit=True, optimize=0)
                 payload = (importlib.util.MAGIC_NUMBER + (3).to_bytes(4, "little")
-                           + importlib.util.source_hash(source) + marshal.dumps(code, 2))
+                           + importlib.util.source_hash(source)
+                           + marshal.dumps(code, 5 if python == "3.14" else 2))
             entry = zipfile.ZipInfo(item["archive_path"], (1980, 2, 1, 0, 0, 0))
             entry.create_system = 3
             entry.external_attr = (stat.S_IFREG | 0o644) << 16
