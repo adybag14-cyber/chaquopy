@@ -13,6 +13,7 @@ from pkgutil import get_importer
 import re
 from shutil import copyfileobj, rmtree
 import site
+from stat import S_IMODE
 import sys
 from tempfile import NamedTemporaryFile
 import time
@@ -346,8 +347,7 @@ class ChaquopyPathFinder(machinery.PathFinder):
         pattern = fr"^{name}(-.*)?\.(dist|egg)-info$"
 
         for entry in context.path:
-            path_cls = AssetPath if entry.startswith(ASSET_PREFIX + "/") else Path
-            entry_path = path_cls(entry)
+            entry_path = path_object(entry)
             try:
                 if entry_path.is_dir():
                     for sub_path in entry_path.iterdir():
@@ -357,9 +357,18 @@ class ChaquopyPathFinder(machinery.PathFinder):
                 pass  # Inaccessible path entries should be ignored.
 
 
+def path_object(path):
+    path_cls = AssetPath if path.startswith(ASSET_PREFIX + "/") else Path
+    return path_cls(path)
+
+
 # This does not inherit from PosixPath, because that would cause
 # importlib.resources.as_file to return it unchanged, rather than creating a temporary
 # file as it should.
+#
+# Although this meets the importlib.metadata.SimplePath protocol, it doesn't inherit
+# that either, because importlib.metadata and its dependencies are quite large, and
+# won't be used in most apps.
 class AssetPath(Traversable):
     def __init__(self, path):
         root_dir = path
@@ -370,7 +379,7 @@ class AssetPath(Traversable):
         self.zip_path = self.finder.zip_path(path)
 
     def __str__(self):
-        return join(self.finder.extract_root, self.zip_path)
+        return join(self.finder.extract_root, self.zip_path).rstrip("/")
 
     def __repr__(self):
         return f"{type(self).__name__}({str(self)!r})"
@@ -405,6 +414,10 @@ class AssetPath(Traversable):
         else:
             return type(self)(child_path)
 
+    @property
+    def parent(self):
+        return path_object(dirname(str(self)))
+
     # `buffering` has no effect because the whole file is read immediately.
     def open(self, mode="r", buffering=-1, encoding=None, errors=None, newline=None):
         if "r" in mode:
@@ -415,8 +428,8 @@ class AssetPath(Traversable):
                 return bio
         raise ValueError(f"unsupported mode: {mode!r}")
 
-    # Traversable.read_text doesn't accept `errors`, which breaks the old importlib API
-    # (https://github.com/python/cpython/issues/127012).
+    # Until Python 3.15, Traversable.read_text didn't accept `errors`, which broke the
+    # old importlib API (https://github.com/python/cpython/issues/127012).
     def read_text(self, encoding=None, errors=None, newline=None):
         with self.open("r", -1, encoding, errors, newline) as strm:
             return strm.read()
@@ -853,7 +866,20 @@ class AssetZipFile(ZipFile):
         if need_extract:
             extracted_filename = self.extract(member, target_dir)
             assert extracted_filename == out_filename, (extracted_filename, out_filename)
+
+            # In API level 37, native libraries loaded using System.load must be
+            # read-only. This doesn't affect lower-level APIs yet, but it's likely
+            # they'll tighten this in the future.
+            #
+            # In theory we could apply this to all files, but while writing to a virtual
+            # environment at runtime is certainly bad practice, it's usually possible,
+            # so there's probably someone out there doing it.
+            if re.search(r"\.so(\.|$)", basename(member.filename)):
+                os.chmod(out_filename, S_IMODE(os.stat(out_filename).st_mode) & ~0o222)
+
+            # Do this last to indicate that the file is in its final state.
             os.utime(out_filename, (time.time(), timegm(member.date_time)))
+
         return out_filename
 
     def exists(self, path):

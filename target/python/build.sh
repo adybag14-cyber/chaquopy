@@ -46,6 +46,13 @@ fi
 if [ $version_int -eq 312 ]; then
     patches+=" bldlibrary grp"
 fi
+
+# https://github.com/python/cpython/pull/158530
+# TODO: reduce to `-eq 313` once this is released in newer Python versions.
+if [ $version_int -ge 313 ]; then
+    patches+=" mimalloc"
+fi
+
 for name in $patches; do
     patch_file="$recipe_dir/patches/$name.patch"
     echo "$patch_file"
@@ -59,7 +66,7 @@ rm -rf $PREFIX/lib/libpython$version_short*
 if [ $version_int -le 312 ]; then
     # Download and unpack libraries needed to compile Python. For a given Python
     # version, we must maintain binary compatibility with existing wheels.
-    libs="bzip2-1.0.8-3 libffi-3.4.4-3 openssl-3.0.18-0 sqlite-3.50.4-0 xz-5.4.6-1"
+    libs="bzip2-1.0.8-3 libffi-3.4.4-3 openssl-3.5.9-0 sqlite-3.53.4-0 xz-5.4.6-1"
 
     url_prefix="https://github.com/beeware/cpython-android-source-deps/releases/download"
     for name_ver in $libs; do
@@ -119,7 +126,13 @@ else
     mkdir -p cross-build/build
     ln -s "$(which python$version_short)" cross-build/build/python
 
-    Android/android.py configure-host "$HOST"
-    Android/android.py make-host "$HOST"
+    if [ $version_int -le 314 ]; then
+        android_script="Android/android.py"
+    else
+        android_script="Platforms/Android"
+    fi
+
+    python$version_short "$android_script" configure-host "$HOST"
+    python$version_short "$android_script" make-host "$HOST"
     cp -a "cross-build/$HOST/prefix/"* "$PREFIX"
 fi

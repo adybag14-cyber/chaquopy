@@ -5,44 +5,52 @@ Change log
 
 .. towncrier release notes start
 
-17.0.0 (2025-12-01)
+17.1.0 (2026-10-12)
 ===================
 
 Features
 --------
 
-- Improved compatibility with various ways of bundling non-Python libraries in
-  a wheel. (`#728 <https://github.com/chaquo/chaquopy/issues/728>`__,
-  `#892 <https://github.com/chaquo/chaquopy/issues/892>`__, `#1383
-  <https://github.com/chaquo/chaquopy/issues/1383>`__)
-- Update to pip version 25.3. (`#981
-  <https://github.com/chaquo/chaquopy/issues/981>`__)
-- Improved detection of changes to :ref:`buildPython`. (`#991
-  <https://github.com/chaquo/chaquopy/issues/991>`__)
-- Android Gradle plugin versions 9.0 to 9.3 are now supported. (`#1096
-  <https://github.com/chaquo/chaquopy/issues/1096>`__)
-- Devices with 16 KB pages are now supported by Chaquopy itself. However, many
-  existing Android wheels will still fail to load on 16 KB devices. For best
-  compatibility with these devices, use Python 3.13 or later. (`#1171
-  <https://github.com/chaquo/chaquopy/issues/1171>`__)
-- Python version 3.14 is now supported. However, it currently has very few
-  Android wheels available. (`#1350
-  <https://github.com/chaquo/chaquopy/issues/1350>`__)
-- Update runtime Python versions to 3.10.19, 3.11.14, 3.12.12, 3.13.9 and
-  3.14.0. (`#1352 <https://github.com/chaquo/chaquopy/issues/1352>`__)
-- Update CA bundle to certifi 2025.8.3. (`#1353
-  <https://github.com/chaquo/chaquopy/issues/1353>`__)
-- Improved compatibility with various ways of tagging a wheel as
-  Android-specific. (`#1374
-  <https://github.com/chaquo/chaquopy/issues/1374>`__)
-- Improved error messages when :ref:`buildPython` is not found. (`#1411
-  <https://github.com/chaquo/chaquopy/issues/1411>`__)
-- Added the wildcard `*` to :ref:`extractPackages` to extract all packages at
-  startup. (`#1424 <https://github.com/chaquo/chaquopy/issues/1424>`__)
+- libpython3.so is now available at runtime, for packages built against the
+  stable ABI (`abi3`). (`#1380
+  <https://github.com/chaquo/chaquopy/issues/1380>`__)
+- The Gradle configuration cache is now supported. (`#1443
+  <https://github.com/chaquo/chaquopy/issues/1443>`__)
+- .so files are now made read-only before loading them, in case this becomes
+  compulsory in future versions of Android. (`#1444
+  <https://github.com/chaquo/chaquopy/issues/1444>`__)
+- Update CA bundle to certifi 2026.7.22. (`#1445
+  <https://github.com/chaquo/chaquopy/issues/1445>`__)
+- Python version 3.15 is now supported. (`#1459
+  <https://github.com/chaquo/chaquopy/issues/1459>`__)
+- Fixed some deprecation warnings to prepare for Gradle 10. (`#1463
+  <https://github.com/chaquo/chaquopy/issues/1463>`__)
+- Enable several SQLite features including FTS5. (`#1466
+  <https://github.com/chaquo/chaquopy/issues/1466>`__)
+- Update runtime Python versions to 3.10.22, 3.11.17, 3.12.15, 3.13.16, 3.14.8
+  and 3.15.0. (`#1467 <https://github.com/chaquo/chaquopy/issues/1467>`__)
 
 
-Deprecations and Removals
--------------------------
+Bugfixes
+--------
+
+- The path-like objects returned from the importer to `importlib` now implement
+  the complete `SimplePath` API, including `parent`. (`#1433
+  <https://github.com/chaquo/chaquopy/issues/1433>`__)
+- When creating the build environment fails because of the Windows
+  260-character path limit, error messages are now displayed. (`#1439
+  <https://github.com/chaquo/chaquopy/issues/1439>`__)
+- Fixed detection of Python installed from the Microsoft Store on Windows.
+  (`#1454 <https://github.com/chaquo/chaquopy/issues/1454>`__)
+- Fix a SYS_SECCOMP crash during startup, seen on x86_64 with API levels 27-28.
+  (`#1475 <https://github.com/chaquo/chaquopy/issues/1475>`__)
+
+
+17.0.0 (2025-12-01)
+===================
+
+Incompatible changes
+--------------------
 
 - Pip now uses the `--only-binary` option, so it will no longer install sdists
   from PyPI or other indexes. Installing a local path to an sdist or source
@@ -66,6 +74,39 @@ Deprecations and Removals
   <https://github.com/chaquo/chaquopy/issues/1411>`__)
 - Pip no longer prefers older Android wheels over newer pure-Python wheels.
   (`#1417 <https://github.com/chaquo/chaquopy/issues/1417>`__)
+
+
+Features
+--------
+
+- Improved compatibility with various ways of bundling non-Python libraries in
+  a wheel. (`#728 <https://github.com/chaquo/chaquopy/issues/728>`__,
+  `#892 <https://github.com/chaquo/chaquopy/issues/892>`__, `#1383
+  <https://github.com/chaquo/chaquopy/issues/1383>`__)
+- Update to pip version 25.3. (`#981
+  <https://github.com/chaquo/chaquopy/issues/981>`__)
+- Improved detection of changes to :ref:`buildPython`. (`#991
+  <https://github.com/chaquo/chaquopy/issues/991>`__)
+- Android Gradle plugin versions 9.0 to 9.4 are now supported. (`#1096
+  <https://github.com/chaquo/chaquopy/issues/1096>`__)
+- Devices with 16 KB pages are now supported by Chaquopy itself. However, many
+  existing Android wheels will still fail to load on 16 KB devices. For best
+  compatibility with these devices, use Python 3.13 or later. (`#1171
+  <https://github.com/chaquo/chaquopy/issues/1171>`__)
+- Python version 3.14 is now supported. However, it currently has very few
+  Android wheels available. (`#1350
+  <https://github.com/chaquo/chaquopy/issues/1350>`__)
+- Update runtime Python versions to 3.10.19, 3.11.14, 3.12.12, 3.13.9 and
+  3.14.0. (`#1352 <https://github.com/chaquo/chaquopy/issues/1352>`__)
+- Update CA bundle to certifi 2025.8.3. (`#1353
+  <https://github.com/chaquo/chaquopy/issues/1353>`__)
+- Improved compatibility with various ways of tagging a wheel as
+  Android-specific. (`#1374
+  <https://github.com/chaquo/chaquopy/issues/1374>`__)
+- Improved error messages when :ref:`buildPython` is not found. (`#1411
+  <https://github.com/chaquo/chaquopy/issues/1411>`__)
+- Added the wildcard `*` to :ref:`extractPackages` to extract all packages at
+  startup. (`#1424 <https://github.com/chaquo/chaquopy/issues/1424>`__)
 
 
 Bugfixes
@@ -107,6 +148,17 @@ Bugfixes
 16.0.0 (2024-10-15)
 ===================
 
+Incompatible changes
+--------------------
+
+- `minSdk` must now be at least API level 24. This
+  still covers `97% of active devices
+  <https://dl.google.com/android/studio/metadata/distributions.json>`__.
+  (`#718 <https://github.com/chaquo/chaquopy/issues/718>`__)
+- :ref:`buildPython` must now be at least Python 3.8. (`#1027
+  <https://github.com/chaquo/chaquopy/issues/1027>`__)
+
+
 Features
 --------
 
@@ -122,17 +174,6 @@ Features
   <https://github.com/chaquo/chaquopy/issues/1245>`__)
 
 
-Deprecations and Removals
--------------------------
-
-- `minSdk` must now be at least API level 24. This
-  still covers `97% of active devices
-  <https://dl.google.com/android/studio/metadata/distributions.json>`__.
-  (`#718 <https://github.com/chaquo/chaquopy/issues/718>`__)
-- :ref:`buildPython` must now be at least Python 3.8. (`#1027
-  <https://github.com/chaquo/chaquopy/issues/1027>`__)
-
-
 Bugfixes
 --------
 
@@ -146,6 +187,16 @@ Bugfixes
 
 15.0.1 (2023-12-24)
 ===================
+
+Incompatible changes
+--------------------
+
+- The 32-bit ABIs `armeabi-v7a` and `x86` will no longer be supported on Python
+  3.12 and later. (`#709 <https://github.com/chaquo/chaquopy/issues/709>`__)
+- Android Gradle plugin versions 4.1 and 4.2 are no longer supported. (`#787
+  <https://github.com/chaquo/chaquopy/issues/787>`__, `#840
+  <https://github.com/chaquo/chaquopy/issues/840>`__)
+
 
 Features
 --------
@@ -180,16 +231,6 @@ Features
 - Update pkg_resources from setuptools version 68.2.2.
 
 
-Deprecations and Removals
--------------------------
-
-- The 32-bit ABIs `armeabi-v7a` and `x86` will no longer be supported on Python
-  3.12 and later. (`#709 <https://github.com/chaquo/chaquopy/issues/709>`__)
-- Android Gradle plugin versions 4.1 and 4.2 are no longer supported. (`#787
-  <https://github.com/chaquo/chaquopy/issues/787>`__, `#840
-  <https://github.com/chaquo/chaquopy/issues/840>`__)
-
-
 Bugfixes
 --------
 
@@ -207,6 +248,13 @@ Bugfixes
 
 14.0.2 (2023-01-29)
 ===================
+
+Incompatible changes
+--------------------
+
+- :ref:`buildPython` must now be at least Python 3.7. (`#713
+  <https://github.com/chaquo/chaquopy/issues/713>`__)
+
 
 Features
 --------
@@ -234,13 +282,6 @@ Features
   `minifyEnabled true` will need a workaround. (`#842
   <https://github.com/chaquo/chaquopy/issues/842>`__)
 - Update to pip version 20.1.
-
-
-Deprecations and Removals
--------------------------
-
-- :ref:`buildPython` must now be at least Python 3.7. (`#713
-  <https://github.com/chaquo/chaquopy/issues/713>`__)
 
 
 Bugfixes

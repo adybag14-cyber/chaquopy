@@ -38,7 +38,7 @@ In your *top-level* `build.gradle` file, set the Chaquopy version:
     }
 
 Also check the Android Gradle plugin version (`com.android.application` or
-`com.android.library`): it should be between 7.3.x and 9.3.x. Older versions are
+`com.android.library`): it should be between 7.3.x and 9.4.x. Older versions are
 supported by :doc:`older versions of Chaquopy <../versions>`. Newer versions may work,
 but have not been tested.
 
@@ -247,7 +247,7 @@ Or if you're using Briefcase, do the following:
 * Run `briefcase create android`.
 
 In :doc:`this version of Chaquopy <../versions>`, the default Python version is 3.10,
-and the other available versions are 3.11, 3.12, 3.13 and 3.14. Different Python
+and the other available versions are 3.11, 3.12, 3.13, 3.14 and 3.15. Different Python
 versions will support a different selection of :ref:`packages <android-requirements>`.
 
 Python 3.11 and older supports both :ref:`32-bit and 64-bit ABIs <android-abis>`. Python
@@ -518,6 +518,13 @@ include:
 * :any:`tkinter`
 * :any:`turtle`
 
+The following modules are unsupported because they're quite large, and unlikely to be
+useful in an Android app:
+
+* :any:`ensurepip`
+* `pydoc_data`, which contains the text for the interactive :any:`help` function
+* :any:`test`
+
 multiprocessing
 ---------------
 
@@ -557,7 +564,7 @@ ssl
 ---
 
 The :any:`ssl` module is configured to use a copy of the CA bundle from `certifi
-<https://pypi.org/project/certifi/>`_ version 2025.8.3. The system CA store is
+<https://pypi.org/project/certifi/>`_ version 2026.10.23. The system CA store is
 not used.
 
 sys

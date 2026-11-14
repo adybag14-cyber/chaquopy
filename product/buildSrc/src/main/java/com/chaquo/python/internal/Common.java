@@ -13,16 +13,17 @@ public class Common {
     // This should match api_level in target/android-env.sh.
     public static final int MIN_SDK_VERSION = 24;
 
-    public static final int COMPILE_SDK_VERSION = 36;
+    public static final String COMPILE_SDK_VERSION = "37.0";
 
     public static final Map<String, String> PYTHON_VERSIONS = new LinkedHashMap<>();
     static {
         // Version, build number
-        PYTHON_VERSIONS.put("3.10.19", "0");
-        PYTHON_VERSIONS.put("3.11.14", "0");
-        PYTHON_VERSIONS.put("3.12.12", "0");
-        PYTHON_VERSIONS.put("3.13.9", "0");
-        PYTHON_VERSIONS.put("3.14.0", "0");
+        PYTHON_VERSIONS.put("3.10.22", "0");
+        PYTHON_VERSIONS.put("3.11.17", "0");
+        PYTHON_VERSIONS.put("3.12.15", "0");
+        PYTHON_VERSIONS.put("3.13.16", "0");
+        PYTHON_VERSIONS.put("3.14.8", "0");
+        PYTHON_VERSIONS.put("3.15.0", "0");
     }
 
     public static List<String> PYTHON_VERSIONS_SHORT = new ArrayList<>();

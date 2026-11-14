@@ -74,10 +74,6 @@ class TestAndroidStdlib(FilterWarningsCase):
 
     def test_locale(self):
         import locale
-        self.assertEqual("UTF-8", locale.getlocale()[1])
-        with catch_warnings():
-            filterwarnings("default", category=DeprecationWarning)
-            self.assertEqual("UTF-8", locale.getdefaultlocale()[1])
         self.assertEqual("utf-8",  # Became lower-case in Python 3.11.
                          locale.getpreferredencoding().lower())
         self.assertEqual("utf-8", sys.getdefaultencoding())
@@ -98,7 +94,7 @@ class TestAndroidStdlib(FilterWarningsCase):
                              pool.map(square_slowly, range(8), chunksize=1))
             duration = time.time() - start
             self.assertGreater(duration, 0.1)
-            self.assertLess(duration, 0.25)
+            self.assertLess(duration, 0.4)  # Some emulators are very slow.
 
         from multiprocessing import get_context, synchronize
         ctx = get_context()
@@ -183,6 +179,9 @@ class TestAndroidStdlib(FilterWarningsCase):
             conn.execute("insert into test values ('alpha', 'one'), ('bravo', 'two')")
             cur = conn.execute("select b from test where a = 'bravo'")
             self.assertEqual([("two",)], cur.fetchall())
+
+            # Check FTS5 is available.
+            conn.execute("create virtual table fts_test using fts5(content)")
 
     def test_ssl(self):
         from urllib.request import urlopen

@@ -22,12 +22,12 @@ afterEvaluate {
 
 android {
     namespace = "com.chaquo.python.demo"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.chaquo.python.demo3"
         minSdk = 24
-        targetSdk = 36
+        targetSdk = 37
 
         val plugins = buildscript.configurations.getByName("classpath")
              .resolvedConfiguration.resolvedArtifacts.map {
@@ -45,11 +45,7 @@ android {
                       verParsed[1] * 1000 +
                       verParsed[2] * 10
 
-        ndk {
-            abiFilters += listOf(
-                "arm64-v8a", "armeabi-v7a", "x86", "x86_64"
-            )
-        }
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     androidResources {
@@ -92,7 +88,18 @@ android {
 
 chaquopy {
     defaultConfig {
-        version = "3.10"
+        version = (findProperty("chaquopy.version") as String?) ?: "3.10"
+        android.defaultConfig.ndk {
+            val abisProperty = findProperty("chaquopy.abis") as String?
+            if (abisProperty != null) {
+                abiFilters += (abisProperty.split(Regex("""\s+""")))
+            } else {
+                abiFilters += listOf("arm64-v8a", "x86_64")
+                if (version in listOf("3.10", "3.11")) {
+                    abiFilters += listOf("armeabi-v7a", "x86")
+                }
+            }
+        }
 
         // Android UI demo
         pip {
@@ -142,10 +149,15 @@ for (path in listOf(
 }
 
 dependencies {
+    // See TestAndroidReflect.
+    compileOnly(project(":compileOnly"))
+
     // Keep these versions the same as the pkgtest app.
     implementation("androidx.appcompat:appcompat:1.7.1")
     implementation("androidx.constraintlayout:constraintlayout:1.1.3")
     implementation("androidx.lifecycle:lifecycle-extensions:2.1.0")
     implementation("androidx.preference:preference:1.1.1")
     implementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test.ext:junit:1.1.5")
+    androidTestImplementation("androidx.test:rules:1.5.0")
 }

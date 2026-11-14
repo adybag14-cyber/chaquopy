@@ -60,7 +60,7 @@ PYTHON_VERSIONS = {}
 for full_version in list_versions("micro").splitlines():
     version = full_version.rpartition(".")[0]
     PYTHON_VERSIONS[version] = full_version
-assert list(PYTHON_VERSIONS) == ["3.10", "3.11", "3.12", "3.13", "3.14"]
+assert list(PYTHON_VERSIONS) == ["3.10", "3.11", "3.12", "3.13", "3.14", "3.15"]
 DEFAULT_PYTHON_VERSION_FULL = PYTHON_VERSIONS[DEFAULT_PYTHON_VERSION]
 
 MIN_PYTHON_VERSION, *_, MAX_PYTHON_VERSION = list(PYTHON_VERSIONS)
@@ -1004,11 +1004,8 @@ class PythonReqs(GradleTestCase):
             [DEFAULT_PYTHON_VERSION, MIN_PYTHON_VERSION, MAX_PYTHON_VERSION]
         ):
             with self.subTest(version=version):
-                # Our current version of pip shows the full URL for custom indexes, but
-                # only the filename for PyPI.
-                CHAQUO_URL = (r"https://chaquo.com/pypi-13.1/murmurhash/"
-                              r"murmurhash-0.28.0-.+-cp.+-cp.+-android_.+\.whl")
-                PYPI_URL = "six-1.14.0-py2.py3-none-any.whl"
+                CHAQUO_WHL = r"murmurhash-0.28.0-.+-cp.+-cp.+-android_.+\.whl"
+                PYPI_WHL = "six-1.14.0-py2.py3-none-any.whl"
 
                 common_reqs = (
                     ["murmurhash/" + name for name in
@@ -1035,15 +1032,15 @@ class PythonReqs(GradleTestCase):
                         ),
                         include_dist_info=True)
 
-                def assert_url(url):
+                def assert_whl(whl):
                     self.assertInStdout(
-                        fr"(Downloading|Using cached) {url}", run, re=True
+                        fr"(Downloading|Using cached) {whl}", run, re=True
                     )
 
                 run = self.RunGradle(
                     "base", "PythonReqs/download_wheel_1", **kwargs("arm64-v8a")
                 )
-                assert_url(CHAQUO_URL)
+                assert_whl(CHAQUO_WHL)
 
                 common_reqs += (
                     ["six.py"] +
@@ -1055,8 +1052,8 @@ class PythonReqs(GradleTestCase):
                 run.rerun(
                     "PythonReqs/download_wheel_2", **kwargs("arm64-v8a", "x86_64")
                 )
-                assert_url(CHAQUO_URL)
-                assert_url(PYPI_URL)
+                assert_whl(CHAQUO_WHL)
+                assert_whl(PYPI_WHL)
 
     def test_not_found(self):
         req = "numpy==1.9.9"
@@ -1695,7 +1692,8 @@ class RunGradle(object):
                     self.dump_run(f"check_apk failed for variant '{variant}'")
                 self.test.assertFalse(merged_kwargs.unused_kwargs)
 
-            # Run a second time to check all tasks are considered up to date.
+            # Run a second time with no changes - all tasks should be considered up to
+            # date except for FindPythonCommand.
             first_stdout = self.stdout
             status, second_stdout, second_stderr = \
                 self.run_gradle(variants, env, java_version)
@@ -1704,13 +1702,18 @@ class RunGradle(object):
                 self.dump_run("Second run: exit status {}".format(status))
 
             # I've occasionally seen Gradle print a task header twice: once without
-            # “UP-TO-DATE” and once with, even though the task was not re-run. So simply
-            # searching the second run output for "Python" tasks is not reliable.
+            # “UP-TO-DATE” and once with. In this case, the task was not re-run, so we
+            # treat it as up-to-date.
             num_tasks = 0
             for line in first_stdout.splitlines():
                 if match := re.search(r"^> Task (\S+Python\S+)", line):
-                    self.test.assertInLong(f"> Task {match[1]} UP-TO-DATE", second_stdout,
-                                           msg=("=== FIRST RUN ===\n" + first_stdout))
+                    task = match[1]
+                    assertion = (
+                        self.test.assertNotInLong if task.endswith("PythonCommand")
+                        else self.test.assertInLong
+                    )
+                    assertion(f"> Task {task} UP-TO-DATE", second_stdout,
+                              msg=("=== FIRST RUN ===\n" + first_stdout))
                     num_tasks += 1
             self.test.assertGreater(num_tasks, 0, msg=first_stdout)
 
@@ -1849,6 +1852,7 @@ class RunGradle(object):
 
         python_version_info = tuple(int(x) for x in python_version.split("."))
         stdlib_bootstrap_expected = {
+            # This is the list from the minimum supported Python version.
             # For why each of these modules is needed, see BOOTSTRAP_NATIVE_STDLIB in
             # PythonTasks.kt.
             "java", "_bz2.so", "_ctypes.so", "_datetime.so", "_lzma.so",
@@ -1863,6 +1867,8 @@ class RunGradle(object):
             stdlib_bootstrap_expected |= {"_opcode.so"}
         if python_version_info >= (3, 14):
             stdlib_bootstrap_expected -= {"_datetime.so", "_opcode.so"}
+        if python_version_info >= (3, 15):
+            stdlib_bootstrap_expected |= {"_math_integer.so"}
 
         bootstrap_native_dir = join(asset_dir, "bootstrap-native")
         self.test.assertCountEqual(abis, os.listdir(bootstrap_native_dir))
@@ -1926,6 +1932,9 @@ class RunGradle(object):
         if python_version_info >= (3, 14):
             stdlib_native_expected -= {"_contextvars.so"}
             stdlib_native_expected |= {"_hmac.so", "_remote_debugging.so", "_zstd.so"}
+        if python_version_info >= (3, 15):
+            stdlib_native_expected -= {"_asyncio.so", "_decimal.so"}
+            stdlib_native_expected |= {"xxlimited_3_13.so"}
 
         for abi in abis:
             stdlib_native_zip = ZipFile(join(asset_dir, f"stdlib-{abi}.imy"))
@@ -1937,7 +1946,7 @@ class RunGradle(object):
                 stdlib_native_zip.namelist(),
             )
             with TemporaryDirectory() as tmp_dir:
-                test_module = add_soabi(python_version_info, abi, "_asyncio.so")
+                test_module = add_soabi(python_version_info, abi, "_bisect.so")
                 stdlib_native_zip.extract(test_module, tmp_dir)
                 self.check_python_so(join(tmp_dir, test_module), python_version, abi)
 
@@ -1966,6 +1975,7 @@ class RunGradle(object):
             "3.12": 3531,
             "3.13": 3571,
             "3.14": 3627,
+            "3.15": 3666,
         }
         with zip_file.open(pyc_filename) as pyc_file:
             magic_actual = pyc_file.read(2)
@@ -1976,6 +1986,8 @@ class RunGradle(object):
 
     def check_lib(self, lib_dir, kwargs):
         python_version = kwargs["python_version"]
+        python_version_major = version.split(".")[0]
+
         abis = kwargs["abis"]
         self.test.assertCountEqual(abis, os.listdir(lib_dir))
         for abi in abis:
@@ -1985,6 +1997,7 @@ class RunGradle(object):
                     "libchaquopy_java.so",
                     "libcrypto_chaquopy.so",
                     "libcrypto_python.so",
+                    f"libpython{python_version_major}.so",
                     f"libpython{python_version}.so",
                     "libssl_chaquopy.so",
                     "libssl_python.so",
@@ -1992,7 +2005,9 @@ class RunGradle(object):
                     "libsqlite3_python.so",
                 ],
                 os.listdir(abi_dir))
-            self.check_python_so(join(abi_dir, "libchaquopy_java.so"), python_version, abi)
+
+            for name in ["chaquopy_java", f"python{python_version_major}"]:
+                self.check_python_so(f"{abi_dir}/lib{name}.so", python_version, abi)
 
     def check_python_so(self, filename_or_file, python_version, abi):
         if isinstance(filename_or_file, str):
