@@ -76,7 +76,7 @@ def build_environment(package: str, *, build_only: bool = False,
                 "python -m compat.hermes.runtime_smoke "
                 f"--package {package} --require-android --log-marker"
             ),
-            "CIBW_TEST_REQUIRES_ANDROID": "typing_extensions==4.15.0",
+            "CIBW_TEST_REQUIRES_ANDROID": "typing_extensions==4.16.0",
             "CIBW_TEST_SKIP": "*" if build_only else "",
             "CIBW_BUILD_VERBOSITY": "1",
             "SOURCE_DATE_EPOCH": "1754006400",
