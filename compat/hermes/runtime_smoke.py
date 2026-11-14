@@ -681,7 +681,8 @@ def anthropic_fixture(request):
     require_fixture(request.method == "POST" and request.url.path == "/v1/messages",
                     "Unexpected Anthropic route")
     require_fixture(request.url.host == "hermes.fixture.invalid", "Unexpected Anthropic host")
-    require_fixture(request.headers["x-api-key"] == FIXTURE_KEY, "Unexpected Anthropic key")
+    require_fixture(request.headers["authorization"] == f"Bearer {FIXTURE_KEY}",
+                    "Unexpected Anthropic authorization")
     require_fixture(request.headers["anthropic-version"] == "2026-10-21",
                     "Unexpected Anthropic API version")
     payload = json.loads(request.content)
@@ -793,14 +794,14 @@ class FalSyncTests(unittest.TestCase):
         opened = []
 
         def fixture_client(**kwargs):
-            client = real_client(
-                transport=httpx.MockTransport(fal_fixture), trust_env=False, **kwargs
-            )
+            kwargs.update(transport=httpx.MockTransport(fal_fixture), trust_env=False)
+            client = real_client(**kwargs)
             opened.append(client)
             return client
 
-        # fal-client 1.0.1 has no public transport parameter. Replace only its
-        # HTTP-client factory, retaining the genuine auth, run and JSON code.
+        # fal-client has no public client transport parameter. Replace only its
+        # HTTP-client factory, including the nested backup transport's client,
+        # retaining the genuine auth, run and JSON code.
         try:
             with (
                 mock.patch.object(implementation.httpx, "Client", side_effect=fixture_client),
@@ -829,9 +830,8 @@ class FalAsyncTests(unittest.IsolatedAsyncioTestCase):
         opened = []
 
         def fixture_client(**kwargs):
-            client = real_client(
-                transport=httpx.MockTransport(fal_fixture), trust_env=False, **kwargs
-            )
+            kwargs.update(transport=httpx.MockTransport(fal_fixture), trust_env=False)
+            client = real_client(**kwargs)
             opened.append(client)
             return client
 
