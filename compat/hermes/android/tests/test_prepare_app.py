@@ -73,7 +73,7 @@ class PrepareAppTests(unittest.TestCase):
             for abi in prepare_app.ABIS:
                 name = f"{package}-{package_version}-{tag}-{tag}-android_{api}_{abi}.whl"
                 (self.wheelhouse / name).write_bytes(b"input inventory fixture, not a real wheel")
-        (self.wheelhouse / "msgpack-1.2.2-py3-none-any.whl").write_bytes(b"pure wheel fixture")
+        (self.wheelhouse / "msgpack-1.2.4-py3-none-any.whl").write_bytes(b"pure wheel fixture")
 
     def prepare(self, version="3.14"):
         return prepare_app.prepare_app(
@@ -131,7 +131,7 @@ class PrepareAppTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "no directly accessible"):
             self.prepare()
         self.wheels()
-        (self.wheelhouse / "msgpack-1.2.2-py3-none-any.whl").unlink()
+        (self.wheelhouse / "msgpack-1.2.4-py3-none-any.whl").unlink()
         with self.assertRaisesRegex(ValueError, "genuinely built msgpack"):
             self.prepare()
 
@@ -142,7 +142,7 @@ class PrepareAppTests(unittest.TestCase):
 
     def test_ambiguous_native_inputs_fail(self):
         self.wheels()
-        duplicate = self.wheelhouse / "jiter-0.16.0-cp314-cp314-android_21_arm64_v8a.whl"
+        duplicate = self.wheelhouse / "jiter-0.19.0-cp314-cp314-android_21_arm64_v8a.whl"
         duplicate.write_bytes(b"duplicate")
         with self.assertRaisesRegex(ValueError, "found 2"):
             self.prepare()

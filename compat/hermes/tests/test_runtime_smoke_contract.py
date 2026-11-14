@@ -125,7 +125,7 @@ class RuntimeSmokeContractTests(unittest.TestCase):
 
     def test_package_version_mismatch_is_not_hidden(self):
         with mock.patch.object(smoke.importlib.metadata, "version", return_value="0.0.0"):
-            with self.assertRaisesRegex(RuntimeError, "expected 0.16.0, installed 0.0.0"):
+            with self.assertRaisesRegex(RuntimeError, "expected 0.19.0, installed 0.0.0"):
                 smoke.package_evidence("jiter")
 
     def test_fixture_assertions_are_explicit(self):
@@ -156,8 +156,8 @@ class RuntimeSmokeContractTests(unittest.TestCase):
             "jiter", "pydantic-core", "pydantic", "msgpack", "aiohttp", "openai",
             "anthropic", "fal-client", "httpx",
         })
-        self.assertEqual(smoke.PACKAGE_SPECS["pydantic"][0], "2.13.5")
-        self.assertEqual(smoke.PACKAGE_SPECS["pydantic-core"][0], "2.46.5")
+        self.assertEqual(smoke.PACKAGE_SPECS["pydantic"][0], "2.14.3")
+        self.assertEqual(smoke.PACKAGE_SPECS["pydantic-core"][0], "2.50.4")
         self.assertEqual(set(smoke.PACKAGE_SPECS["aiohttp"][2]), {
             "aiohttp._http_parser", "aiohttp._http_writer", "aiohttp._websocket.reader_c",
             "aiohttp._websocket.mask",

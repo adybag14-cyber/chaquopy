@@ -16,7 +16,7 @@ import sys
 
 
 HERE = Path(__file__).resolve().parent
-NATIVE_PACKAGES = {"jiter": "0.16.0", "pydantic_core": "2.46.5"}
+NATIVE_PACKAGES = {"jiter": "0.19.0", "pydantic_core": "2.50.4"}
 ABIS = ("arm64_v8a", "x86_64")
 
 
@@ -57,9 +57,9 @@ def inspect_wheelhouse(wheelhouse: Path, python_version: str) -> list[dict]:
                     f"Expected exactly one {package} {version} Python {python_version} "
                     f"{abi} wheel for Android API <= 24, found {len(matches)}"
                 )
-    pure_msgpack = wheelhouse / "msgpack-1.2.2-py3-none-any.whl"
+    pure_msgpack = wheelhouse / "msgpack-1.2.4-py3-none-any.whl"
     if not pure_msgpack.is_file():
-        raise ValueError("Wheelhouse needs the genuinely built msgpack-1.2.2-py3-none-any.whl")
+        raise ValueError("Wheelhouse needs the genuinely built msgpack-1.2.4-py3-none-any.whl")
     return [
         {"filename": path.name, "bytes": path.stat().st_size, "sha256": digest(path)}
         for path in wheels

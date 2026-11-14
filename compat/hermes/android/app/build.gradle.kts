@@ -106,7 +106,7 @@ dependencies {
 }
 
 // Chaquopy 17 keeps runtime dependencies in its own detached configurations.
-// Only substitute the source-built Python bootstrap: Java/JNI stay on stable 17.0.0.
+// Only substitute the source-built Python bootstrap: Java/JNI stay on stable 17.2.0.
 afterEvaluate {
     val pythonPlugin = plugins.getPlugin(PythonPlugin::class.java)
     val bootstrapConfigs = pythonPlugin.configs.filterKeys { it.endsWith("RuntimeBootstrap") }

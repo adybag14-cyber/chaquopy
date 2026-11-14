@@ -70,7 +70,7 @@ class SourcePreparationTests(unittest.TestCase):
             "python": ["3.13", "3.14"], "android_api": 24, "abis": ["arm64-v8a", "x86_64"],
         })
         self.assertEqual(
-            self.lock["packages"]["pydantic_core"]["paired_requirement"], "pydantic==2.13.5"
+            self.lock["packages"]["pydantic_core"]["paired_requirement"], "pydantic==2.14.3"
         )
         self.assertEqual(
             self.lock["packages"]["msgpack"]["build"]["environment"], {"MSGPACK_PUREPYTHON": "1"}
@@ -83,7 +83,7 @@ class SourcePreparationTests(unittest.TestCase):
                 receipt = self.prepare(package, archive)
                 source = Path(receipt["source_dir"])
                 changed = (source / "pyproject.toml").read_bytes()
-                self.assertIn(b'maturin==1.15.0', changed)
+                self.assertIn(self.lock['packages'][package]['build']['pinned_requirement'].encode(), changed)
                 self.assertNotEqual(changed, original)
                 self.assertEqual(
                     receipt["patches"][0]["before_sha256"], hashlib.sha256(original).hexdigest()
@@ -106,7 +106,7 @@ class SourcePreparationTests(unittest.TestCase):
         archive, _ = self.fixture("pydantic_core")
         receipt = self.prepare("pydantic-core", archive)
         self.assertEqual(receipt["package"], "pydantic_core")
-        self.assertEqual(Path(receipt["source_dir"]).name, "pydantic_core-2.46.5")
+        self.assertEqual(Path(receipt["source_dir"]).name, "pydantic_core-2.50.4")
 
     def test_hash_mismatch_is_rejected_before_extraction(self):
         archive, _ = self.fixture()
@@ -126,8 +126,8 @@ class SourcePreparationTests(unittest.TestCase):
             self.prepare(archive=archive)
 
     def test_unsafe_and_unexpected_paths_are_rejected(self):
-        for path in ("../escaped", "/absolute", "C:/escape", "other/file", "jiter-0.16.0/../escape",
-                     "jiter-0.16.0\\escape", "jiter-0.16.0/./alias", "jiter-0.16.0/file:ads"):
+        for path in ("../escaped", "/absolute", "C:/escape", "other/file", "jiter-0.19.0/../escape",
+                     "jiter-0.19.0\\escape", "jiter-0.19.0/./alias", "jiter-0.19.0/file:ads"):
             with self.subTest(path=path):
                 archive, _ = self.fixture(extras=[(path, b"bad")])
                 with self.assertRaises(sources.PreparationError):
@@ -138,7 +138,7 @@ class SourcePreparationTests(unittest.TestCase):
     def test_links_and_special_files_are_rejected(self):
         for kind in (tarfile.SYMTYPE, tarfile.LNKTYPE, tarfile.FIFOTYPE, tarfile.CHRTYPE):
             with self.subTest(kind=kind):
-                member = tarfile.TarInfo("jiter-0.16.0/bad")
+                member = tarfile.TarInfo("jiter-0.19.0/bad")
                 member.type = kind
                 member.linkname = "../outside"
                 archive, _ = self.fixture(extras=[(member, b"")])
@@ -147,7 +147,7 @@ class SourcePreparationTests(unittest.TestCase):
                 self.assertEqual(list(self.dest.iterdir()), [])
 
     def test_duplicate_casefolded_paths_are_rejected(self):
-        archive, _ = self.fixture(extras=[("jiter-0.16.0/SRC/MODULE.py", b"bad")])
+        archive, _ = self.fixture(extras=[("jiter-0.19.0/SRC/MODULE.py", b"bad")])
         with self.assertRaisesRegex(sources.PreparationError, "Duplicate"):
             self.prepare(archive=archive)
 

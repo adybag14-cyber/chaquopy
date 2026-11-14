@@ -320,7 +320,7 @@ def copy_custom(
         )
         require(build.get("source_lock_sha256") == lock_hash, "native build lock mismatch")
         require(
-            build.get("cibuildwheel_version") == "4.2.0"
+            build.get("cibuildwheel_version") == "4.3.5"
             and build.get("rustc_version", "").startswith("rustc 1.88.0 "),
             "native build toolchain mismatch",
         )

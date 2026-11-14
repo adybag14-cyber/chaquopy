@@ -33,18 +33,18 @@ from unittest import mock
 
 # A deliberately bounded, reproducible compatibility set, not a "latest" claim.
 PACKAGE_SPECS = {
-    "jiter": ("0.16.0", "jiter", ("jiter.jiter",)),
-    "pydantic-core": ("2.46.5", "pydantic_core", ("pydantic_core._pydantic_core",)),
-    "pydantic": ("2.13.5", "pydantic", ()),
-    "msgpack": ("1.2.2", "msgpack", ()),
+    "jiter": ("0.19.0", "jiter", ("jiter.jiter",)),
+    "pydantic-core": ("2.50.4", "pydantic_core", ("pydantic_core._pydantic_core",)),
+    "pydantic": ("2.14.3", "pydantic", ()),
+    "msgpack": ("1.2.4", "msgpack", ()),
     "aiohttp": (
-        "3.14.3", "aiohttp",
+        "3.14.5", "aiohttp",
         ("aiohttp._http_parser", "aiohttp._http_writer", "aiohttp._websocket.reader_c",
          "aiohttp._websocket.mask"),
     ),
     "openai": ("2.54.0", "openai", ()),
-    "anthropic": ("0.125.0", "anthropic", ()),
-    "fal-client": ("1.0.1", "fal_client", ()),
+    "anthropic": ("2.8.0", "anthropic", ()),
+    "fal-client": ("1.0.3", "fal_client", ()),
     "httpx": ("0.28.1", "httpx", ()),
 }
 PACKAGE_GROUPS = {
@@ -676,13 +676,13 @@ class OpenAIAsyncResponsesAndStreamsTests(unittest.IsolatedAsyncioTestCase):
 
 
 def anthropic_fixture(request):
-    import httpx
+    import httpx2 as httpx
 
     require_fixture(request.method == "POST" and request.url.path == "/v1/messages",
                     "Unexpected Anthropic route")
     require_fixture(request.url.host == "hermes.fixture.invalid", "Unexpected Anthropic host")
     require_fixture(request.headers["x-api-key"] == FIXTURE_KEY, "Unexpected Anthropic key")
-    require_fixture(request.headers["anthropic-version"] == "2023-06-01",
+    require_fixture(request.headers["anthropic-version"] == "2026-10-21",
                     "Unexpected Anthropic API version")
     payload = json.loads(request.content)
     require_fixture(payload["model"] == "fixture-model" and payload["max_tokens"] == 16,
@@ -715,7 +715,7 @@ class SDKSyncTests(unittest.TestCase):
                 self.assertEqual(response.model_dump()["id"], "chatcmpl-fixture")
 
     def test_anthropic_genuine_sync_client(self):
-        import httpx
+        import httpx2 as httpx
         from anthropic import Anthropic
 
         with httpx.Client(
@@ -752,7 +752,7 @@ class SDKAsyncTests(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(response.usage.total_tokens, 2)
 
     async def test_anthropic_genuine_async_client(self):
-        import httpx
+        import httpx2 as httpx
         from anthropic import AsyncAnthropic
 
         async with asyncio.timeout(15):

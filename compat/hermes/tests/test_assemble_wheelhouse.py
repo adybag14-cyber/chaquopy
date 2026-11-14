@@ -124,8 +124,8 @@ class AssemblyTests(unittest.TestCase):
         self.output = self.root / "complete-wheels"
         self.requirements = self.root / "requirements.txt"
         self.requirements.write_text(
-            "jiter==0.16.0\npydantic-core==2.46.5\nmsgpack==1.2.2\n"
-            "pydantic==2.13.5\naiohttp==3.14.3\nhelper==1.0\n"
+            "jiter==0.19.0\npydantic-core==2.50.4\nmsgpack==1.2.4\n"
+            "pydantic==2.14.3\naiohttp==3.14.3\nhelper==1.0\n"
         )
         self.lock_path = self.root / "sources.lock.json"
         self.lock_bytes = assembler.DEFAULT_LOCK.read_bytes()
@@ -134,7 +134,7 @@ class AssemblyTests(unittest.TestCase):
         self.network = {}
         self.fetches = []
         self.make_artifacts()
-        self.add_official("pydantic", "2.13.5", requires=("pydantic-core==2.46.5",))
+        self.add_official("pydantic", "2.14.3", requires=("pydantic-core==2.50.4",))
         self.add_official("helper", "1.0")
         self.add_official("aiohttp", "3.14.3", native=True)
 
@@ -196,7 +196,7 @@ class AssemblyTests(unittest.TestCase):
                         "abi": abi,
                         "android_api": 24,
                         "source_lock_sha256": provenance["source_lock_sha256"],
-                        "cibuildwheel_version": "4.2.0",
+                        "cibuildwheel_version": "4.3.5",
                         "rustc_version": "rustc 1.88.0 (fixture)",
                         "runtime_validation": "not_run_cross_architecture"
                         if abi == "arm64-v8a"
@@ -668,8 +668,8 @@ class AssemblyTests(unittest.TestCase):
             self.assemble()
 
     def test_dependency_extras_propagate(self):
-        self.add_official("helper", "1.0", requires=("pydantic[special]==2.13.5",))
-        self.add_official("pydantic", "2.13.5", requires=('missing; extra == "special"',))
+        self.add_official("helper", "1.0", requires=("pydantic[special]==2.14.3",))
+        self.add_official("pydantic", "2.14.3", requires=('missing; extra == "special"',))
         with self.assertRaisesRegex(assembler.AssemblyError, "closure missing"):
             self.assemble()
 
@@ -679,7 +679,7 @@ class AssemblyTests(unittest.TestCase):
             self.assemble()
 
     def test_duplicate_requirement(self):
-        self.requirements.write_text(self.requirements.read_text() + "pydantic_core==2.46.5\n")
+        self.requirements.write_text(self.requirements.read_text() + "pydantic_core==2.50.4\n")
         with self.assertRaisesRegex(assembler.AssemblyError, "duplicate pinned"):
             self.assemble()
 
@@ -689,7 +689,7 @@ class AssemblyTests(unittest.TestCase):
             self.assemble()
 
     def test_unexpected_core_version(self):
-        self.requirements.write_text(self.requirements.read_text().replace("2.46.5", "2.48.0"))
+        self.requirements.write_text(self.requirements.read_text().replace("2.50.4", "2.48.0"))
         with self.assertRaisesRegex(assembler.AssemblyError, "version mismatch"):
             self.assemble()
 

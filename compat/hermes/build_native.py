@@ -242,8 +242,8 @@ def main(argv: list[str] | None = None) -> int:
     }
     try:
         driver_version = importlib.metadata.version("cibuildwheel")
-        if driver_version != "4.2.0":
-            raise ValueError(f"Expected cibuildwheel 4.2.0, got {driver_version}")
+        if driver_version != "4.3.5":
+            raise ValueError(f"Expected cibuildwheel 4.3.5, got {driver_version}")
         rust_version = subprocess.run(
             ["rustc", "--version"], check=True, capture_output=True,
             text=True, encoding="utf-8", timeout=30,
